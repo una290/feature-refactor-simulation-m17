@@ -1,0 +1,4 @@
+jsonschema
+fastapi
+uvicorn
+psutil
