@@ -10,6 +10,7 @@ from .M11_bundle_exporter import BundleExporter
 class OBHResult:
     episode_id: str
     exported_path: str
+    bundle_content: Optional[Dict[str, Any]] = None
 
 class OBHController:
     """
@@ -19,48 +20,28 @@ class OBHController:
     def __init__(self, timeline_builder: TimelineBuilder, exporter: BundleExporter):
         self.timeline_builder = timeline_builder
         self.exporter = exporter
+        self.last_result: Optional[OBHResult] = None
 
     def run(self, out_dir: str, recognition: EpisodeRecognition,
             metrics, events, snapshots) -> OBHResult:
         timeline = self.timeline_builder.build(metrics, events, snapshots)
-        
-        if recognition.bdb_bundle:
-            # V2 Fusion: Use BDB bundle as base
-            bundle = recognition.bdb_bundle.copy()
-            # Enrich with DAE timeline (raw data that BDB might summarize/omit)
-            bundle["timeline"] = timeline
-            
-            # Legacy/Compatibility Fields
-            bundle["spec"] = "DAE_P1_Fused_v2" 
-            bundle["episode_id"] = recognition.episode_id
-            bundle["episode_start"] = iso(recognition.episode_start)
-            bundle["worst_window_ref"] = recognition.worst_window_ref
-            bundle["primary_verdict"] = recognition.primary_verdict
-            bundle["confidence"] = recognition.confidence
-            bundle["evidence_refs"] = recognition.evidence_refs
-            bundle["observability"] = {
-                 "observability_status": recognition.observability.observability_status,
-                 "opaque_risk": recognition.observability.opaque_risk,
-                 "missing_refs": recognition.observability.missing_refs,
-                 "origin_hint": recognition.observability.origin_hint
-             }
-        else:
-            # V1 Legacy
-            bundle = {
-                "spec": "DAE_P1_Free_v1",
-                "episode_id": recognition.episode_id,
-                "episode_start": iso(recognition.episode_start),
-                "worst_window_ref": recognition.worst_window_ref,
-                "primary_verdict": recognition.primary_verdict,
-                "confidence": recognition.confidence,
-                "evidence_refs": recognition.evidence_refs,
-                "observability": {
-                    "observability_status": recognition.observability.observability_status,
-                    "opaque_risk": recognition.observability.opaque_risk,
-                    "missing_refs": recognition.observability.missing_refs,
-                    "origin_hint": recognition.observability.origin_hint
-                },
-                "timeline": timeline
-            }
+        bundle = {
+            "spec": "DAE_P1_Free_v1",
+            "episode_id": recognition.episode_id,
+            "episode_start": iso(recognition.episode_start),
+            "worst_window_ref": recognition.worst_window_ref,
+            "primary_verdict": recognition.primary_verdict,
+            "confidence": recognition.confidence,
+            "evidence_refs": recognition.evidence_refs,
+            "observability": {
+                "observability_status": recognition.observability.observability_status,
+                "opaque_risk": recognition.observability.opaque_risk,
+                "missing_refs": recognition.observability.missing_refs,
+                "origin_hint": recognition.observability.origin_hint
+            },
+            "timeline": timeline
+        }
         path = self.exporter.export(out_dir, recognition.episode_id, bundle)
-        return OBHResult(episode_id=recognition.episode_id, exported_path=path)
+        res = OBHResult(episode_id=recognition.episode_id, exported_path=path, bundle_content=bundle)
+        self.last_result = res
+        return res
