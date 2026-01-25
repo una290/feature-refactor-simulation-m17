@@ -1,0 +1,33 @@
+{
+  "version": "v0-jp-closure-open-set",
+  "WAN_FWA": [
+    "WAN_RTT_HIGH",
+    "WAN_LOSS_HIGH",
+    "FWA_RE_ATTACH",
+    "FWA_CELL_CHANGE",
+    "FWA_SIGNAL_WEAK",
+    "BOUNDARY_WAN_TAIL_COLLAPSE"
+  ],
+  "WIFI": [
+    "WIFI_RETRY_HIGH",
+    "WIFI_AIRTIME_BUSY",
+    "WIFI_STEERING_HIGH",
+    "WIFI_STEERING_EVENTS",
+    "WIFI_BACKHAUL_WEAK",
+    "BOUNDARY_STEERING_OSCILLATION"
+  ],
+  "DEVICE_THERMAL": [
+    "THERMAL_HOT",
+    "THERMAL_THROTTLE",
+    "DEVICE_REBOOT",
+    "DEVICE_UPTIME_LOW",
+    "BOUNDARY_THERMAL_OVERHEAT"
+  ],
+  "CROSSCUT": [
+    "READINESS_INSUFFICIENT",
+    "BOUNDARY_EVIDENCE_INSUFFICIENT",
+    "MIXED_SIGNALS",
+    "UNCERTAIN_INSUFFICIENT_SIGNALS"
+  ],
+  "note": "Open set. Operators may extend/override via private playbooks without changing the core contract."
+}

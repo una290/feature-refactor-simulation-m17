@@ -97,6 +97,7 @@ class EpisodeRecognition:
     confidence: float
     evidence_refs: List[str]
     observability: ObservabilityResult
+    bdb_bundle: Optional[Dict[str, Any]] = None
 
 def to_json(obj: Any) -> str:
     def default(o):

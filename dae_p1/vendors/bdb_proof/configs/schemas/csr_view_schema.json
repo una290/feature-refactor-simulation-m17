@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/csr_view_schema.json",
+  "title": "CSR View (Closure-first)",
+  "type": "object",
+  "properties": {
+    "csr_view": {
+      "type": "object",
+      "properties": {
+        "closure_verdict": { "type": "string", "enum": ["CLOSEABLE", "NOT_CLOSEABLE"] },
+        "triage": { "type": "string" },
+        "one_line_reason": { "type": "string" },
+        "next_step_class": { "type": "string" },
+        "evidence_ref": {
+          "type": "object",
+          "properties": {
+            "evidence_id": { "type": "string" },
+            "window_id": { "type": "string" }
+          },
+          "required": ["evidence_id", "window_id"]
+        }
+      },
+      "required": ["closure_verdict", "triage", "one_line_reason", "next_step_class", "evidence_ref"]
+    }
+  },
+  "required": ["csr_view"]
+}

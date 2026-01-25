@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/triage_output_schema.json",
+  "title": "3-way Split (Triage) Output",
+  "type": "object",
+  "properties": {
+    "triage": {
+      "type": "object",
+      "properties": {
+        "label": { "type": "string", "enum": ["WAN-dominant", "WiFi-dominant", "Device-dominant", "Mixed", "Uncertain"] },
+        "confidence": { "type": "string", "enum": ["high", "med", "low"] },
+        "reason_codes": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "string" }
+      },
+      "required": ["label", "confidence", "reason_codes", "notes"]
+    }
+  },
+  "required": ["triage"]
+}

@@ -1,62 +1,90 @@
 
 from __future__ import annotations
-from typing import Dict, Any, List, Tuple
-import statistics
+from typing import Dict, Any, List
+from .M00_common import MetricSample
+from .vendors.bdb_proof.core.fp_lite import compute_fp_lite
+from .vendors.bdb_proof.core.aggregator import WindowAggregator
+from .vendors.bdb_proof.core.windowing import WindowManager
 
-def _window_slice(metrics_points: List[Dict[str, Any]], start_idx: int, end_idx: int) -> List[Dict[str, Any]]:
-    return metrics_points[max(0,start_idx):max(0,end_idx)]
+from .vendors.bdb_proof.core.types import Observation
 
-def _vec(slice_pts: List[Dict[str, Any]]) -> Dict[str, float]:
-    def vals(key):
-        v = [p[key] for p in slice_pts if p.get(key) is not None]
-        return v
-    out = {}
-    for k in ["latency_p95_ms","retry_pct","airtime_busy_pct","mesh_flap_count","wan_sinr_db","loss_pct"]:
-        v = vals(k)
-        if v:
-            out[k] = float(statistics.mean(v))
-    return out
+def compute_fingerprint_lite(metrics: List[MetricSample]) -> Dict[str, Any]:
+    """
+    Computes a 'Lite' fingerprint using the V2 Core Logic.
+    
+    This function adapts old 'MetricSample' inputs into V2 'Observation' objects,
+    feeds them into a V2 'WindowAggregator', and then calls the V2 'compute_fp_lite'.
+    """
+    # 1. Adapt Metrics -> Observations
+    obs_list = []
+    for m in metrics:
+        # Simplistic mapping: DAE metrics -> V2 Observation
+        # V2 Observation expects a flexible dict payload.
+        # We ensure keys match what BDB aggregator expects (e.g. latency_ms, etc.)
+        payload = {
+            "latency_ms": m.latency_p95_ms,
+            "packet_loss_pct": m.loss_pct,
+            # Add other fields as necessary for V2 policy
+        }
+        
+        # Convert float timestamp to datetime
+        import datetime
+        ts_dt = datetime.datetime.fromtimestamp(m.ts, datetime.timezone.utc)
 
-def _delta(a: Dict[str,float], b: Dict[str,float]) -> Dict[str,float]:
-    keys = set(a.keys()) | set(b.keys())
-    return {k: b.get(k,0.0) - a.get(k,0.0) for k in keys}
+        obs = Observation(
+            ts=ts_dt,
+            domain="wifi", # Simplified assumption
+            device_id="self-gateway", # M13 didn't have device_id context, adding default
+            metrics=payload
+        )
+        obs_list.append(obs)
 
-def _label(delta: Dict[str,float]) -> Tuple[str,float]:
-    # Heuristic: pick dominant pattern
-    score = {"drift":0.0,"stability":0.0,"boundary":0.0,"oscillation":0.0}
-    if delta.get("wan_sinr_db",0.0) < -2.0:
-        score["boundary"] += 1.0
-    if delta.get("mesh_flap_count",0.0) > 1.0:
-        score["oscillation"] += 1.0
-    if delta.get("retry_pct",0.0) > 5.0 or delta.get("airtime_busy_pct",0.0) > 10.0:
-        score["stability"] += 1.0
-    if delta.get("latency_p95_ms",0.0) > 20.0:
-        score["drift"] += 1.0
-    label = max(score, key=score.get)
-    conf = min(0.9, 0.4 + 0.2*score[label])
-    return label, conf
+    # 2. Summarize (Aggregation)
+    # We create a temporary aggregator to summarize this batch
+    wm = WindowManager(window_seconds=300) 
+    agg = WindowAggregator(wm)
+    summary = agg.summarize(obs_list)
+
+    # 3. Compute Code (V2 Core)
+    # This ensures our 'lite' code matches the rigorous V2 definition
+    result = compute_fp_lite(summary)
+
+    return result.model_dump()
 
 def fp_lite_from_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
-    pts = bundle["timeline"]["metrics_points"]
-    n = len(pts)
-    if n < 6:
-        return {"error":"insufficient_points"}
-    # Split into thirds: before/during/after
-    a = _window_slice(pts, 0, n//3)
-    d = _window_slice(pts, n//3, 2*n//3)
-    z = _window_slice(pts, 2*n//3, n)
-    fp_before = _vec(a)
-    fp_during = _vec(d)
-    fp_after  = _vec(z)
-    delta_db = _delta(fp_before, fp_during)
-    delta_ab = _delta(fp_before, fp_after)
-    label, conf = _label(delta_db)
-    return {
-        "fp_before": fp_before,
-        "fp_during": fp_during,
-        "fp_after": fp_after,
-        "delta_during_minus_before": delta_db,
-        "delta_after_minus_before": delta_ab,
-        "pattern_label": label,
-        "confidence": conf
-    }
+    """
+    Recalculates fp_lite from a bundle's timeline points.
+    Useful for verification or offline analysis.
+    """
+    # Extract points from legacy or new structure
+    points = bundle.get("timeline", {}).get("metrics_points", [])
+    
+    # Convert to Observation (similar logic)
+    obs_list = []
+    for p in points:
+        # Handle dict input
+        payload = {
+            "latency_ms": p.get("latency_p95_ms"), # Mapping p95 to latency_ms for V2 agg
+            "packet_loss_pct": p.get("loss_pct"),
+            "wan_sinr_db": p.get("wan_sinr_db")
+        }
+        # Mock timestamp if missing, or parse ISO
+        import datetime
+        ts_str = p.get("t")
+        if ts_str:
+            ts = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            ts = datetime.datetime.now(datetime.timezone.utc)
+            
+        obs = Observation(
+            ts=ts,
+            domain="wifi", 
+            device_id="offline_cli",
+            metrics=payload
+        )
+        obs_list.append(obs)
+        
+    wm = WindowManager(window_seconds=300) 
+    agg = WindowAggregator(wm)
+    summary = agg.summarize(obs_list)
+    result = compute_fp_lite(summary)
+    return result.model_dump()

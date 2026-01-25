@@ -1,4 +1,4 @@
-export const API_BASE_URL = 'http://172.18.129.34:8000';
+export const API_BASE_URL = 'http://172.20.10.13:8000';
 // export const API_BASE_URL = 'https://dae-p1-19-modules.vercel.app';
 // Note: If testing on a physical device, replace 'localhost' with your PC's IP address (e.g., 192.168.1.x)
 

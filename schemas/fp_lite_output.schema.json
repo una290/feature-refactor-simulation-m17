@@ -1,46 +1,28 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.local/dae/fp_lite.schema.json",
-  "title": "fp-lite output",
+  "title": "fp-lite output V2 (BDB Integration)",
   "type": "object",
   "required": [
-    "fp_before",
-    "fp_during",
-    "fp_after",
-    "delta_during_minus_before",
-    "delta_after_minus_before",
-    "pattern_label",
-    "confidence"
+    "fp_lite_version",
+    "facet_levels",
+    "regime_code"
   ],
   "properties": {
-    "fp_before": {
-      "type": "object"
+    "fp_lite_version": {
+      "type": "string"
     },
-    "fp_during": {
-      "type": "object"
+    "facet_levels": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      }
     },
-    "fp_after": {
-      "type": "object"
+    "regime_code": {
+      "type": "string"
     },
-    "delta_during_minus_before": {
-      "type": "object"
-    },
-    "delta_after_minus_before": {
-      "type": "object"
-    },
-    "pattern_label": {
-      "type": "string",
-      "enum": [
-        "drift",
-        "stability",
-        "boundary",
-        "oscillation"
-      ]
-    },
-    "confidence": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1
+    "notes": {
+      "type": "string"
     }
   },
   "additionalProperties": true
