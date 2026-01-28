@@ -1,0 +1,66 @@
+{
+    "profile_ref": "FWA_CONGESTION_SUSPECT",
+    "window_ref": "SIM-8-2",
+    "window_data": [
+        {
+            "latency_p95_ms": 35
+        },
+        {
+            "latency_p95_ms": 38
+        },
+        {
+            "latency_p95_ms": 40
+        },
+        {
+            "latency_p95_ms": 42
+        },
+        {
+            "latency_p95_ms": 45
+        },
+        {
+            "latency_p95_ms": 46
+        },
+        {
+            "latency_p95_ms": 47
+        },
+        {
+            "latency_p95_ms": 48
+        },
+        {
+            "latency_p95_ms": 50
+        },
+        {
+            "latency_p95_ms": 52
+        },
+        {
+            "latency_p95_ms": 55
+        },
+        {
+            "latency_p95_ms": 60
+        },
+        {
+            "latency_p95_ms": 65
+        },
+        {
+            "latency_p95_ms": 70
+        },
+        {
+            "latency_p95_ms": 80
+        },
+        {
+            "latency_p95_ms": 90
+        },
+        {
+            "latency_p95_ms": 120
+        },
+        {
+            "latency_p95_ms": 150
+        },
+        {
+            "latency_p95_ms": 180
+        },
+        {
+            "latency_p95_ms": 210
+        }
+    ]
+}

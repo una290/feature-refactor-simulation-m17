@@ -1,6 +1,12 @@
-export const API_BASE_URL = 'http://localhost:8000';
-// export const API_BASE_URL = 'https://dae-p1-19-modules.vercel.app';
-// Note: If testing on a physical device, replace 'localhost' with your PC's IP address (e.g., 192.168.1.x)
+// Default value is empty, forcing user to input via IpConfigScreen
+export let API_BASE_URL = '';
+// export const API_BASE_URL = 'http://172.18.129.27:8000'; // Legacy default
+
+export const setBaseUrl = (url) => {
+    API_BASE_URL = url;
+};
+
+export const getBaseUrl = () => API_BASE_URL;
 
 export const fetchMetrics = async () => {
     try {

@@ -12,13 +12,6 @@ export default function HomeDashboard({ onNavigate }) {
             icon: '✓'
         },
         {
-            id: 'SIMULATE',
-            title: 'Simulate Incident',
-            desc: 'Inject faults to test detection',
-            color: '#FF9500',
-            icon: '⚠'
-        },
-        {
             id: 'OBH',
             title: 'One Button Helper',
             desc: 'Instant diagnose & capture',
@@ -44,8 +37,15 @@ export default function HomeDashboard({ onNavigate }) {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>DAE Field Tool</Text>
-                <Text style={styles.headerSubtitle}>Technician Dashboard</Text>
+                <View style={styles.headerRow}>
+                    <View>
+                        <Text style={styles.headerTitle}>DAE Field Tool</Text>
+                        <Text style={styles.headerSubtitle}>Technician Dashboard</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => onNavigate('SETTINGS')} style={styles.settingsButton}>
+                        <Text style={styles.settingsIcon}>⚙️</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
 
             <ScrollView contentContainerStyle={styles.menuContainer}>
@@ -94,6 +94,17 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#8E8E93',
         fontWeight: '500',
+    },
+    headerRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    settingsButton: {
+        padding: 5,
+    },
+    settingsIcon: {
+        fontSize: 28,
     },
     menuContainer: {
         padding: 20,

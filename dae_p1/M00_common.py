@@ -27,6 +27,51 @@ def ensure_dir(p: str) -> None:
 
 Verdict = Literal["WAN_UNSTABLE","WIFI_CONGESTION","MESH_FLAP","DFS_EVENT","OPAQUE_RISK","UNKNOWN"]
 
+# V1.3 Spec Event Types
+class EventType:
+    # Wi-Fi 7/8
+    MLO_LINK_FLAP = "MLO_LINK_FLAP"
+    MESH_BACKHAUL_WEAK = "MESH_BACKHAUL_WEAK"
+    OBSS_INTERFERENCE_SPIKE = "OBSS_INTERFERENCE_SPIKE"
+    ROAM_STORM = "ROAM_STORM"
+    # FWA
+    RSRP_DROP_EDGE = "RSRP_DROP_EDGE"
+    CELL_RESELECT_STORM = "CELL_RESELECT_STORM"
+    RTT_SPIKE_TAIL = "RTT_SPIKE_TAIL"
+    # Legacy/Common
+    SIGNAL_IMPROVED = "signal_improved"
+    SIGNAL_IMPROVED = "signal_improved"
+    SIGNAL_DEGRADED = "signal_degraded"
+    # Cable
+    T3_T4_BURST = "T3_T4_BURST"
+    US_RTT_TAIL_SPIKE = "US_RTT_TAIL_SPIKE"
+    MER_DROP_EDGE = "MER_DROP_EDGE"
+
+# V1.3 Spec Reason Codes
+class ReasonCode:
+    # Wi-Fi 7/8
+    P95_RTT_TOO_HIGH = "P95_RTT_TOO_HIGH"
+    P95_LOSS_TOO_HIGH = "P95_LOSS_TOO_HIGH"
+    MESH_BACKHAUL_LIMITER = "MESH_BACKHAUL_LIMITER"
+    WIFI_SIDE_OSCILLATION = "WIFI_SIDE_OSCILLATION"
+    MLO_ASYMMETRIC_LINK = "MLO_ASYMMETRIC_LINK"
+    INSUFFICIENT_SAMPLES = "INSUFFICIENT_SAMPLES"
+    # FWA
+    WEAK_COVERAGE_RSRP_P5 = "WEAK_COVERAGE_RSRP_P5"
+    LOW_SINR_P5 = "LOW_SINR_P5"
+    CELL_RESELECT_UNSTABLE = "CELL_RESELECT_UNSTABLE"
+    TAIL_RTT_TOO_HIGH = "TAIL_RTT_TOO_HIGH"
+    PEAK_CONGESTION_SUSPECT = "PEAK_CONGESTION_SUSPECT"
+    PEAK_CONGESTION_SUSPECT = "PEAK_CONGESTION_SUSPECT"
+    # Cable
+    T3T4_RETRY_BURST = "T3T4_RETRY_BURST"
+    TAIL_US_RTT_TOO_HIGH = "TAIL_US_RTT_TOO_HIGH"
+    TAIL_US_LOSS_TOO_HIGH = "TAIL_US_LOSS_TOO_HIGH"
+    PLANT_IMPAIRMENT_SUSPECT = "PLANT_IMPAIRMENT_SUSPECT"
+    # Generic
+    PASSED_ALL_CHECKS = "PASSED_ALL_CHECKS"
+
+
 @dataclass
 class VersionRefs:
     fw: str = "unknown"
@@ -60,6 +105,14 @@ class MetricSample:
     radio_type: Optional[str] = None
     band: Optional[str] = None
     dns_status: Optional[str] = None # OK / FAIL
+    # Cable Metrics
+    t3_count: Optional[int] = None
+    t4_count: Optional[int] = None
+    us_latency_p95_ms: Optional[float] = None
+    us_loss_pct: Optional[float] = None
+    ofdm_mer_db: Optional[float] = None
+    fec_corrected: Optional[int] = None
+    fec_uncorrected: Optional[int] = None
 
 @dataclass
 class ChangeEventCard:

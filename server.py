@@ -58,10 +58,12 @@ async def lifespan(app: FastAPI):
         adapter = DemoAdapter()
     
     # Use accelerate=True so it doesn't sleep internally, we control loop with asyncio
-    cfg = CoreRuntimeConfig(sample_interval_sec=1, buffer_minutes=60, accelerate=True, persistence_enabled=True)
+    # V1.3 Requirement: 7 Days retention
+    # 60 min * 24 hours * 7 days = 10080 minutes
+    cfg = CoreRuntimeConfig(sample_interval_sec=1, buffer_minutes=10080, accelerate=True, persistence_enabled=True)
     core = OBHCoreService(adapter, cfg)
     
-    manifest_manager = ManifestManager(core.metrics_buf)
+    manifest_manager = ManifestManager(core.metrics_buf, core.events_buf)
 
     background_task = asyncio.create_task(run_core_loop())
     

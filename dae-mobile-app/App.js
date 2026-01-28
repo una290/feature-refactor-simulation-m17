@@ -1,20 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { setBaseUrl } from './src/api';
 import { StyleSheet, SafeAreaView, Platform, StatusBar } from 'react-native';
 import HomeDashboard from './components/HomeDashboard';
 import InstallationVerifier from './components/InstallationVerifier';
 import SimulateIncident from './components/SimulateIncident';
+import SettingsMenu from './components/SettingsMenu';
 import OneButtonHelper from './components/OneButtonHelper';
 import FleetView from './components/FleetView';
 import DeviceDrilldown from './components/DeviceDrilldown';
 import ProofCard from './components/ProofCard';
 import MetricsView from './components/MetricsView';
 import ModuleInspector from './components/ModuleInspector';
+import IpConfigScreen from './components/IpConfigScreen';
 
 export default function App() {
 
-  const [currentScreen, setCurrentScreen] = useState('HOME');
-  // Screens: HOME, INSTALL, SIMULATE, OBH, FLEET, DRILLDOWN, PROOF, METRICS, MODULES
+  // Changed default to IP_CONFIG to force user input
+  const [currentScreen, setCurrentScreen] = useState('IP_CONFIG');
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
+
+  // We no longer automatically set IP on load, we just wait for user in IpConfigScreen
 
   const handleNavigate = (screenId) => {
     if (screenId === 'PROOF') {
@@ -49,18 +55,38 @@ export default function App() {
     } else if (['METRICS', 'MODULES'].includes(currentScreen)) {
       // Return to wherever we came from, but for now FLEET is the main legacy parent
       setCurrentScreen('FLEET');
+    } else if (currentScreen === 'SETTINGS') {
+      setCurrentScreen('HOME');
+    } else if (currentScreen === 'SIMULATE') {
+      setCurrentScreen('SETTINGS');
     } else {
       // Default back to Home
       setCurrentScreen('HOME');
     }
   };
 
+  const handleConnect = (ip) => {
+    setBaseUrl(ip);
+    setCurrentScreen('HOME');
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
 
+      {currentScreen === 'IP_CONFIG' && (
+        <IpConfigScreen onConnect={handleConnect} />
+      )}
+
       {currentScreen === 'HOME' && (
         <HomeDashboard onNavigate={handleNavigate} />
+      )}
+
+      {currentScreen === 'SETTINGS' && (
+        <SettingsMenu
+          onNavigate={handleNavigate}
+          onBack={() => setCurrentScreen('HOME')}
+        />
       )}
 
       {currentScreen === 'INSTALL' && (
@@ -68,7 +94,7 @@ export default function App() {
       )}
 
       {currentScreen === 'SIMULATE' && (
-        <SimulateIncident onBack={() => setCurrentScreen('HOME')} />
+        <SimulateIncident onBack={navigateBack} />
       )}
 
       {currentScreen === 'OBH' && (

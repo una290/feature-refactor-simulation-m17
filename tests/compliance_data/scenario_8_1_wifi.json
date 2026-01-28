@@ -1,0 +1,42 @@
+{
+    "profile_ref": "WIFI78_INSTALL_ACCEPT",
+    "window_ref": "SIM-8-1",
+    "window_data": [
+        {
+            "latency_p95_ms": 20
+        },
+        {
+            "latency_p95_ms": 22
+        },
+        {
+            "latency_p95_ms": 21
+        },
+        {
+            "latency_p95_ms": 23
+        },
+        {
+            "latency_p95_ms": 24
+        },
+        {
+            "latency_p95_ms": 25
+        },
+        {
+            "latency_p95_ms": 26
+        },
+        {
+            "latency_p95_ms": 28
+        },
+        {
+            "latency_p95_ms": 30
+        },
+        {
+            "latency_p95_ms": 40
+        },
+        {
+            "latency_p95_ms": 80
+        },
+        {
+            "latency_p95_ms": 120
+        }
+    ]
+}

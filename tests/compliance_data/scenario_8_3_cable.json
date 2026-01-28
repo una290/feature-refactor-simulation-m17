@@ -1,0 +1,126 @@
+{
+    "profile_ref": "CABLE_UPSTREAM_INTERMITTENT",
+    "window_ref": "SIM-8-3",
+    "window_data": [
+        {
+            "us_latency_p95_ms": 20
+        },
+        {
+            "us_latency_p95_ms": 22
+        },
+        {
+            "us_latency_p95_ms": 21
+        },
+        {
+            "us_latency_p95_ms": 25
+        },
+        {
+            "us_latency_p95_ms": 24
+        },
+        {
+            "us_latency_p95_ms": 23
+        },
+        {
+            "us_latency_p95_ms": 26
+        },
+        {
+            "us_latency_p95_ms": 28
+        },
+        {
+            "us_latency_p95_ms": 30
+        },
+        {
+            "us_latency_p95_ms": 29
+        },
+        {
+            "us_latency_p95_ms": 35
+        },
+        {
+            "us_latency_p95_ms": 40
+        },
+        {
+            "us_latency_p95_ms": 45
+        },
+        {
+            "us_latency_p95_ms": 50
+        },
+        {
+            "us_latency_p95_ms": 55
+        },
+        {
+            "us_latency_p95_ms": 60
+        },
+        {
+            "us_latency_p95_ms": 80
+        },
+        {
+            "us_latency_p95_ms": 120
+        },
+        {
+            "us_latency_p95_ms": 200
+        },
+        {
+            "us_latency_p95_ms": 300
+        },
+        {
+            "us_latency_p95_ms": 25
+        },
+        {
+            "us_latency_p95_ms": 24
+        },
+        {
+            "us_latency_p95_ms": 23
+        },
+        {
+            "us_latency_p95_ms": 22
+        },
+        {
+            "us_latency_p95_ms": 21
+        },
+        {
+            "us_latency_p95_ms": 26
+        },
+        {
+            "us_latency_p95_ms": 28
+        },
+        {
+            "us_latency_p95_ms": 30
+        },
+        {
+            "us_latency_p95_ms": 29
+        },
+        {
+            "us_latency_p95_ms": 35
+        },
+        {
+            "us_latency_p95_ms": 40
+        },
+        {
+            "us_latency_p95_ms": 45
+        },
+        {
+            "us_latency_p95_ms": 50
+        },
+        {
+            "us_latency_p95_ms": 60
+        },
+        {
+            "us_latency_p95_ms": 70
+        },
+        {
+            "us_latency_p95_ms": 90
+        },
+        {
+            "us_latency_p95_ms": 110
+        },
+        {
+            "us_latency_p95_ms": 140
+        },
+        {
+            "us_latency_p95_ms": 180
+        },
+        {
+            "us_latency_p95_ms": 220
+        }
+    ]
+}
