@@ -1,19 +1,56 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getBaseUrl, setBaseUrl } from '../src/api';
 
 export default function SettingsMenu({ onNavigate, onBack }) {
     const [ip, setIp] = useState(getBaseUrl());
+    const [isLoading, setIsLoading] = useState(false);
+    const [errorMsg, setErrorMsg] = useState(null);
+    const [successMsg, setSuccessMsg] = useState(null);
 
     const handleSave = async () => {
+        setIsLoading(true);
+        setErrorMsg(null);
+        setSuccessMsg(null);
+
+        let cleanIp = ip.trim();
+        if (cleanIp && !cleanIp.startsWith('http://') && !cleanIp.startsWith('https://')) {
+            cleanIp = 'http://' + cleanIp;
+        }
+        if (cleanIp.endsWith('/')) {
+            cleanIp = cleanIp.slice(0, -1);
+        }
+
         try {
-            setBaseUrl(ip);
-            await AsyncStorage.setItem('api_ip', ip);
-            Alert.alert('Success', 'IP Address saved!');
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+            console.log(`Pinging ${cleanIp}...`);
+            const response = await fetch(`${cleanIp}/`, {
+                method: 'GET',
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                setBaseUrl(cleanIp);
+                await AsyncStorage.setItem('api_ip', cleanIp);
+                setSuccessMsg(`✓ Connected to ${cleanIp}`);
+            } else {
+                throw new Error(`Server returned status ${response.status}`);
+            }
         } catch (e) {
             console.error(e);
-            Alert.alert('Error', 'Failed to save settings');
+            let msg = e.message;
+            if (e.name === 'AbortError' || msg.includes('aborted')) {
+                msg = 'Connection Timed Out. (Check Firewall?)';
+            } else if (msg.includes('Network request failed')) {
+                msg = 'Network Error. (Check IP/Wi-Fi)';
+            }
+            setErrorMsg(`Failed: ${msg}`);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -23,8 +60,7 @@ export default function SettingsMenu({ onNavigate, onBack }) {
             title: 'Simulate Incident (M17)',
             desc: 'Inject faults to test detection logic',
             icon: '⚠'
-        },
-        // Future settings can go here
+        }
     ];
 
     return (
@@ -34,7 +70,7 @@ export default function SettingsMenu({ onNavigate, onBack }) {
                     <Text style={styles.backButtonText}>← Back</Text>
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Settings</Text>
-                <View style={{ width: 60 }} /> {/* Spacer for centering */}
+                <View style={{ width: 60 }} />
             </View>
 
             <ScrollView contentContainerStyle={styles.menuContainer}>
@@ -48,9 +84,22 @@ export default function SettingsMenu({ onNavigate, onBack }) {
                         autoCapitalize="none"
                         autoCorrect={false}
                         placeholder="http://192.168.x.x:8000"
+                        editable={!isLoading}
                     />
-                    <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-                        <Text style={styles.saveButtonText}>Save</Text>
+
+                    {errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
+                    {successMsg && <Text style={styles.successText}>{successMsg}</Text>}
+
+                    <TouchableOpacity
+                        style={[styles.saveButton, isLoading && styles.saveButtonDisabled]}
+                        onPress={handleSave}
+                        disabled={isLoading}
+                    >
+                        {isLoading ? (
+                            <ActivityIndicator color="#FFF" />
+                        ) : (
+                            <Text style={styles.saveButtonText}>Save & Connect</Text>
+                        )}
                     </TouchableOpacity>
                 </View>
 
@@ -129,7 +178,7 @@ const styles = StyleSheet.create({
         borderTopWidth: StyleSheet.hairlineWidth,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderColor: '#C6C6C8',
-        marginBottom: 20, // Group spacing
+        marginBottom: 20,
     },
     iconContainer: {
         width: 30,
@@ -188,15 +237,31 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         backgroundColor: '#F9F9F9',
     },
+    saveButtonText: {
+        color: '#FFF',
+        fontSize: 17,
+        fontWeight: '600',
+    },
+    saveButtonDisabled: {
+        backgroundColor: '#99c9ff',
+    },
+    errorText: {
+        color: '#ff4444',
+        fontSize: 13,
+        marginBottom: 12,
+        paddingHorizontal: 4,
+    },
+    successText: {
+        color: '#00C851',
+        fontSize: 13,
+        marginBottom: 12,
+        paddingHorizontal: 4,
+        fontWeight: 'bold',
+    },
     saveButton: {
         backgroundColor: '#007AFF',
         borderRadius: 8,
         paddingVertical: 12,
         alignItems: 'center',
-    },
-    saveButtonText: {
-        color: '#FFF',
-        fontSize: 17,
-        fontWeight: '600',
     }
 });

@@ -496,6 +496,32 @@ def trigger_obh():
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/api/wan")
+def get_wan_info():
+    """Get simulated WAN status."""
+    return {
+        "status": "Connected",
+        "ip": "203.0.113.45",
+        "gateway": "203.0.113.1",
+        "dns": ["8.8.8.8", "1.1.1.1"],
+        "uptime": "2d 4h 15m"
+    }
+
+@app.get("/api/lan")
+def get_lan_info():
+    """Get simulated LAN status."""
+    return {
+        "ip": "192.168.1.1",
+        "subnet": "255.255.255.0",
+        "dhcp_clients": 5,
+        "devices": [
+            {"name": "Kevin's iPhone", "ip": "192.168.1.105", "mac": "AA:BB:CC:DD:EE:01", "type": "wifi"},
+            {"name": "Living Room TV", "ip": "192.168.1.102", "mac": "11:22:33:44:55:02", "type": "ethernet"},
+            {"name": "Gaming PC", "ip": "192.168.1.150", "mac": "66:77:88:99:AA:03", "type": "ethernet"},
+            {"name": "Smart Thermostat", "ip": "192.168.1.110", "mac": "BB:CC:DD:EE:FF:04", "type": "wifi"}
+        ]
+    }
+
 if __name__ == "__main__":
     import uvicorn
     # Listen on all interfaces to allow access from Simulator/External devices

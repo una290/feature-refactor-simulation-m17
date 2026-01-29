@@ -31,7 +31,8 @@ export default function HomeDashboard({ onNavigate }) {
             desc: 'Generate V1.3 Proof Card',
             color: '#9C27B0',
             icon: '📜'
-        }
+        },
+
     ];
 
     return (

@@ -20,6 +20,8 @@
       }
     },
     "android": {
+      "package": "com.yanfu.daemobileapp",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -29,16 +31,13 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {
-      "eas": {
-        "projectId": "1bccf01d-9757-42d1-8546-759c7a0c4f5f"
-      }
-    },
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "updates": {
-      "url": "https://u.expo.dev/1bccf01d-9757-42d1-8546-759c7a0c4f5f"
+    "extra": {
+      "eas": {
+        "projectId": "62b92946-c468-4dad-af04-c01ab07a3905"
+      }
     }
   }
 }

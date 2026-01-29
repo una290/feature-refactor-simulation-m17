@@ -14,6 +14,7 @@ import MetricsView from './components/MetricsView';
 import ModuleInspector from './components/ModuleInspector';
 import IpConfigScreen from './components/IpConfigScreen';
 
+
 export default function App() {
 
   // Changed default to IP_CONFIG to force user input
@@ -57,6 +58,7 @@ export default function App() {
       setCurrentScreen('FLEET');
     } else if (currentScreen === 'SETTINGS') {
       setCurrentScreen('HOME');
+
     } else if (currentScreen === 'SIMULATE') {
       setCurrentScreen('SETTINGS');
     } else {
@@ -129,6 +131,8 @@ export default function App() {
       {currentScreen === 'MODULES' && (
         <ModuleInspector onBack={navigateBack} />
       )}
+
+
     </SafeAreaView>
   );
 }
