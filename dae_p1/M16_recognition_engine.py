@@ -10,6 +10,8 @@ from .M00_common import (
     ObservabilityResult, iso
 )
 from .M09_episode_manager import EpisodeManager
+from .M06_observability_checker import ObservabilityChecker
+from .M07_incident_detector import IncidentDetector
 
 # V2 Core Imports
 from .vendors.bdb_proof.core.admission import AdmissionGate, AdmissionRequest
@@ -26,7 +28,9 @@ class RecognitionEngine:
     Wraps 'bdb_proof' core components to drive recognition.
     """
     def __init__(self, config_path: str = None):
-        self.ep_mgr = EpisodeManager()
+        self.episodes = EpisodeManager()
+        self.obs = ObservabilityChecker()
+        self.detector = IncidentDetector()
         
         # Load V2 Policy
         if config_path is None:
@@ -116,7 +120,7 @@ class RecognitionEngine:
                 legacy_verdict = "WAN_UNSTABLE"
         
         # Get episode state from manager
-        ep = self.ep_mgr.start_or_update(
+        ep = self.episodes.start_or_update(
             worst_window_ref=worst_window_ref,
             evidence_ref=bundle.evidence_id
         )

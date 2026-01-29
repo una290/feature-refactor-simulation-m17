@@ -1,10 +1,105 @@
-export const API_BASE_URL = 'http://172.20.10.13:8000';
-// export const API_BASE_URL = 'https://dae-p1-19-modules.vercel.app';
-// Note: If testing on a physical device, replace 'localhost' with your PC's IP address (e.g., 192.168.1.x)
+// api.js - Dynamic IP Support
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const API_URL_KEY = 'dae_api_base_url';
+
+// Mutable state for the API Base URL
+let apiBaseUrl = null;
+
+/**
+ * Set the API Base URL dynamically.
+ * @param {string} ip - The IP address (and optional port) to connect to.
+ */
+export const setApiBaseUrl = (inputUrl) => {
+    // Basic cleanup: remove trailing slash, add http if missing
+    let url = inputUrl.trim();
+    if (!url.startsWith('http')) {
+        url = `http://${url}`;
+    }
+    // If user forgot port, maybe assume 8000? Or just let them fail. 
+    // For now, let's assume the user types "192.168.1.10:8000" or just "192.168.1.10"
+    // If just IP, append default port 8000 for convenience
+    if (!url.split(':')[2]) {
+        url = `${url}:8000`;
+    }
+
+    apiBaseUrl = url;
+    console.log("API Base URL set to:", apiBaseUrl);
+};
+
+export const saveApiBaseUrl = async (url) => {
+    try {
+        await AsyncStorage.setItem(API_URL_KEY, url);
+    } catch (e) {
+        console.error("Failed to save API URL", e);
+    }
+};
+
+export const loadApiBaseUrl = async () => {
+    try {
+        const value = await AsyncStorage.getItem(API_URL_KEY);
+        if (value !== null) {
+            setApiBaseUrl(value);
+            return value;
+        }
+    } catch (e) {
+        console.error("Failed to load API URL", e);
+    }
+    return null;
+};
+
+export const getApiBaseUrl = () => apiBaseUrl;
+
+// Helper to check if API is configured
+const isConfigured = () => {
+    return apiBaseUrl !== null;
+};
+
+// Helper: Fetch with Timeout
+const fetchWithTimeout = async (url, options = {}, timeout = 3000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+    } catch (error) {
+        clearTimeout(id);
+        throw error;
+    }
+};
+
+/**
+ * Test connection explicitly and return detailed info or throw error.
+ * Used by HomeDashboard for debugging.
+ */
+export const testConnection = async () => {
+    if (!isConfigured()) throw new Error("API URL not configured");
+    const url = `${apiBaseUrl}/status`;
+
+    console.log(`[API] Testing connection to ${url}`);
+
+    try {
+        const response = await fetchWithTimeout(url, {}, 3000); // 3s timeout
+        if (!response.ok) {
+            throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+        }
+        return await response.json();
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            throw new Error(`Timeout: Connection to ${url} timed out after 3000ms`);
+        }
+        throw new Error(`Network Error: ${error.message} (Target: ${url})`);
+    }
+};
 
 export const fetchMetrics = async () => {
+    if (!isConfigured()) return null;
     try {
-        const response = await fetch(`${API_BASE_URL}/metrics`);
+        const response = await fetch(`${apiBaseUrl}/metrics`);
         return await response.json();
     } catch (error) {
         console.error("Error fetching metrics:", error);
@@ -13,8 +108,9 @@ export const fetchMetrics = async () => {
 };
 
 export const fetchEvents = async () => {
+    if (!isConfigured()) return [];
     try {
-        const response = await fetch(`${API_BASE_URL}/events`);
+        const response = await fetch(`${apiBaseUrl}/events`);
         return await response.json();
     } catch (error) {
         console.error("Error fetching events:", error);
@@ -23,8 +119,9 @@ export const fetchEvents = async () => {
 };
 
 export const fetchSnapshots = async () => {
+    if (!isConfigured()) return [];
     try {
-        const response = await fetch(`${API_BASE_URL}/snapshots`);
+        const response = await fetch(`${apiBaseUrl}/snapshots`);
         return await response.json();
     } catch (error) {
         console.error("Error fetching snapshots:", error);
@@ -32,9 +129,21 @@ export const fetchSnapshots = async () => {
     }
 };
 
-export const triggerRecognition = async () => {
+export const checkInstallVerification = async () => {
+    if (!isConfigured()) return null;
     try {
-        const response = await fetch(`${API_BASE_URL}/recognition`);
+        const response = await fetch(`${apiBaseUrl}/install_verify`);
+        return await response.json();
+    } catch (error) {
+        console.error("Error checking install verification:", error);
+        return null; // Ensure this returns null on error so UI can handle it
+    }
+};
+
+export const triggerRecognition = async () => {
+    if (!isConfigured()) return null;
+    try {
+        const response = await fetch(`${apiBaseUrl}/recognition`);
         return await response.json();
     } catch (error) {
         console.error("Error triggering recognition:", error);
@@ -42,19 +151,10 @@ export const triggerRecognition = async () => {
     }
 };
 
-export const checkInstallVerification = async () => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/install_verify`);
-        return await response.json();
-    } catch (error) {
-        console.error("Error checking install verification:", error);
-        return null;
-    }
-};
-
 export const fetchStatus = async () => {
+    if (!isConfigured()) return null;
     try {
-        const response = await fetch(`${API_BASE_URL}/status`);
+        const response = await fetch(`${apiBaseUrl}/status`);
         return await response.json();
     } catch (error) {
         console.error("Error fetching status:", error);
@@ -63,8 +163,9 @@ export const fetchStatus = async () => {
 };
 
 export const fetchFleet = async () => {
+    if (!isConfigured()) return [];
     try {
-        const response = await fetch(`${API_BASE_URL}/fleet`);
+        const response = await fetch(`${apiBaseUrl}/fleet`);
         return await response.json();
     } catch (error) {
         console.error("Error fetching fleet:", error);
@@ -73,8 +174,9 @@ export const fetchFleet = async () => {
 };
 
 export const fetchDeviceDetail = async (deviceId) => {
+    if (!isConfigured()) return null;
     try {
-        const response = await fetch(`${API_BASE_URL}/device/${deviceId}`);
+        const response = await fetch(`${apiBaseUrl}/device/${deviceId}`);
         return await response.json();
     } catch (error) {
         console.error(`Error fetching device detail for ${deviceId}:`, error);
@@ -83,8 +185,9 @@ export const fetchDeviceDetail = async (deviceId) => {
 };
 
 export const fetchProofData = async (deviceId) => {
+    if (!isConfigured()) return null;
     try {
-        const response = await fetch(`${API_BASE_URL}/device/${deviceId}/proof`);
+        const response = await fetch(`${apiBaseUrl}/device/${deviceId}/proof`);
         return await response.json();
     } catch (error) {
         console.error(`Error fetching proof for ${deviceId}:`, error);
@@ -93,8 +196,9 @@ export const fetchProofData = async (deviceId) => {
 };
 
 export const simulateIncident = async (type, duration) => {
+    if (!isConfigured()) return null;
     try {
-        const response = await fetch(`${API_BASE_URL}/simulate/incident?type=${type}&duration=${duration}`, {
+        const response = await fetch(`${apiBaseUrl}/simulate/incident?type=${type}&duration=${duration}`, {
             method: 'POST'
         });
         return await response.json();
@@ -105,8 +209,9 @@ export const simulateIncident = async (type, duration) => {
 };
 
 export const triggerOBH = async () => {
+    if (!isConfigured()) return null;
     try {
-        const response = await fetch(`${API_BASE_URL}/obh/trigger`, {
+        const response = await fetch(`${apiBaseUrl}/obh/trigger`, {
             method: 'POST'
         });
         return await response.json();

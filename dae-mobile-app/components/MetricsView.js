@@ -96,11 +96,13 @@ export default function MetricsView({ onBack }) {
                 checkInstallVerification()
             ]);
 
-            if (metricsData) {
-                setMetrics(metricsData);
-                setError(null);
+            // Always update state, even if null. 
+            // If null, the UI handles it by showing '--' placeholders.
+            setMetrics(metricsData || null);
 
-                // Update chart data
+            // Update chart data if we have metrics, otherwise keep as is or pad with zeros?
+            // User asked for "Empty Frames", so we just don't add points if no data.
+            if (metricsData) {
                 setChartData(prev => {
                     const newData = {
                         signal: [...prev.signal, metricsData.signal_strength_pct || 0],
@@ -119,15 +121,18 @@ export default function MetricsView({ onBack }) {
 
                     return newData;
                 });
-            } else {
-                setError('No metrics available');
             }
+
+            // Don't set error on null data, just show empty
+            setError(null);
 
             if (statusData) setStatus(statusData.status);
             if (verificationData) setVerification(verificationData);
 
         } catch (err) {
-            setError(`Failed to fetch data: ${err.message}`);
+            // Only set error on actual fetch exception/network failure
+            console.log("Fetch error (likely not connected):", err.message);
+            // setError(`Not Connected`); // Optional: don't show big red banner, just stay empty
         }
     };
 
