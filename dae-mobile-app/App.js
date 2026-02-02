@@ -17,11 +17,11 @@ import IpConfigScreen from './components/IpConfigScreen';
 
 export default function App() {
 
-  // Changed default to IP_CONFIG to force user input
-  const [currentScreen, setCurrentScreen] = useState('IP_CONFIG');
+  // Changed default to HOME as requested, connection logic moved there
+  const [currentScreen, setCurrentScreen] = useState('HOME');
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
 
-  // We no longer automatically set IP on load, we just wait for user in IpConfigScreen
+  // We no longer automatically set IP on load, we just wait for user in HomeDashboard
 
   const handleNavigate = (screenId) => {
     if (screenId === 'PROOF') {
@@ -67,9 +67,88 @@ export default function App() {
     }
   };
 
-  const handleConnect = (ip) => {
-    setBaseUrl(ip);
-    setCurrentScreen('HOME');
+  // Connection State (Lifted from HomeDashboard)
+  const [ip, setIp] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [log, setLog] = useState([]);
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    const loadSavedIp = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('api_ip');
+        if (saved) {
+          setIp(saved);
+        }
+      } catch (e) {
+        console.error('Failed to load IP', e);
+      }
+    };
+    loadSavedIp();
+  }, []);
+
+  const addLog = (message) => {
+    setLog(prev => [`[${new Date().toLocaleTimeString()}] ${message}`, ...prev]);
+  };
+
+  const handleConnect = async (targetIp) => {
+    // If called with an argument, use it (from input), otherwise use state 'ip'
+    const ipToConnect = targetIp || ip;
+    if (!ipToConnect) return;
+
+    setIsLoading(true);
+    setIsConnected(false);
+    setLog([]); // Clear previous log
+    addLog('Starting connection...');
+
+    // Auto-fix common input errors
+    let cleanIp = ipToConnect.trim();
+    if (!cleanIp.startsWith('http://') && !cleanIp.startsWith('https://')) {
+      cleanIp = 'http://' + cleanIp;
+    }
+
+    // Remove trailing slash if present for consistency
+    if (cleanIp.endsWith('/')) {
+      cleanIp = cleanIp.slice(0, -1);
+    }
+
+    // Update IP state if it changed via cleaning or argument
+    setIp(cleanIp);
+    addLog(`Target: ${cleanIp}`);
+
+    try {
+      // Health check ping
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+      addLog('Sending health check...');
+      const response = await fetch(`${cleanIp}/`, {
+        method: 'GET',
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      addLog(`Response status: ${response.status}`);
+
+      if (response.ok) {
+        setIsConnected(true);
+        addLog('Connection Successful!');
+        await AsyncStorage.setItem('api_ip', cleanIp);
+        setBaseUrl(cleanIp);
+      } else {
+        throw new Error(`Server returned ${response.status}`);
+      }
+    } catch (e) {
+      console.log('Connection failed', e);
+      let msg = e.message || 'Unknown error';
+      if (e.name === 'AbortError' || msg.includes('aborted')) {
+        msg = 'Timed Out (Check Firewall)';
+      }
+      addLog(`Error: ${msg}`);
+      setIsLoading(false);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -81,7 +160,17 @@ export default function App() {
       )}
 
       {currentScreen === 'HOME' && (
-        <HomeDashboard onNavigate={handleNavigate} />
+        <HomeDashboard
+          onNavigate={handleNavigate}
+
+          // Pass connection props
+          ip={ip}
+          setIp={setIp}
+          log={log}
+          isConnected={isConnected}
+          isLoading={isLoading}
+          onConnect={() => handleConnect(ip)}
+        />
       )}
 
       {currentScreen === 'SETTINGS' && (

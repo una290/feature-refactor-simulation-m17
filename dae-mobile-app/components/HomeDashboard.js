@@ -1,7 +1,17 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 
-export default function HomeDashboard({ onNavigate }) {
+export default function HomeDashboard({
+    onNavigate,
+    // Connection props from App.js
+    ip,
+    setIp,
+    log,
+    isConnected,
+    isLoading,
+    onConnect
+}) {
+    // Local state removed, using props
 
     const menuItems = [
         {
@@ -50,6 +60,46 @@ export default function HomeDashboard({ onNavigate }) {
             </View>
 
             <ScrollView contentContainerStyle={styles.menuContainer}>
+
+                {/* Connection Section */}
+                <View style={styles.connectionSection}>
+                    <Text style={styles.sectionTitle}>SERVER CONNECTION</Text>
+                    <View style={styles.inputRow}>
+                        <TextInput
+                            style={styles.input}
+                            value={ip}
+                            onChangeText={setIp}
+                            placeholder="e.g. 172.18.129.28:8000"
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            editable={!isLoading && !isConnected}
+                        />
+                        <TouchableOpacity
+                            style={[styles.connectButton, (isLoading || isConnected) && styles.buttonDisabled]}
+                            onPress={onConnect}
+                            disabled={isLoading || isConnected}
+                        >
+                            {isLoading ? (
+                                <ActivityIndicator color="#fff" size="small" />
+                            ) : (
+                                <Text style={styles.connectButtonText}>{isConnected ? '✓' : 'CONNECT'}</Text>
+                            )}
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Debug Log */}
+                    <View style={styles.debugLog}>
+                        <Text style={styles.debugLabel}>DEBUG LOG:</Text>
+                        {(!log || log.length === 0) ? (
+                            <Text style={styles.logText}>Waiting for connection...</Text>
+                        ) : (
+                            log.map((line, index) => (
+                                <Text key={index} style={styles.logText}>{line}</Text>
+                            ))
+                        )}
+                    </View>
+                </View>
+
                 {menuItems.map((item) => (
                     <TouchableOpacity
                         key={item.id}
@@ -110,6 +160,77 @@ const styles = StyleSheet.create({
     menuContainer: {
         padding: 20,
     },
+    // Connection Section Styles
+    connectionSection: {
+        marginBottom: 24,
+        padding: 16,
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        // Match card shadow
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    sectionTitle: {
+        fontSize: 12,
+        fontWeight: 'bold',
+        color: '#8E8E93',
+        marginBottom: 8,
+        textTransform: 'uppercase',
+    },
+    inputRow: {
+        flexDirection: 'row',
+        marginBottom: 12,
+    },
+    input: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: '#000', // Making it distinct/bold as per screenshot style
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16,
+        backgroundColor: '#F2F2F7',
+        marginRight: 8,
+        height: 48,
+    },
+    connectButton: {
+        backgroundColor: '#007AFF',
+        borderRadius: 8,
+        paddingHorizontal: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: 48,
+    },
+    buttonDisabled: {
+        backgroundColor: '#A0Cfff',
+    },
+    connectButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: 14,
+    },
+    debugLog: {
+        backgroundColor: '#333',
+        padding: 12,
+        borderRadius: 8,
+        minHeight: 80,
+    },
+    debugLabel: {
+        color: '#888',
+        fontSize: 10,
+        marginBottom: 4,
+        textTransform: 'uppercase',
+    },
+    logText: {
+        color: '#ddd',
+        fontSize: 12,
+        fontFamily: 'monospace', // Monospace for log look
+        marginBottom: 2,
+    },
+    // End Connection Section Styles
+
     card: {
         backgroundColor: '#FFF',
         borderRadius: 16,

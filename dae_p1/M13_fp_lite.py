@@ -205,7 +205,8 @@ class ProofCardGenerator:
                  window_data: List[Dict[str, Any]], 
                  profile_ref: str, 
                  window_ref_str: str,
-                 manifest_ref_str: str = "TBD") -> Dict[str, Any]:
+                 manifest_ref_str: str = "TBD",
+                 events: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         
         # 0. Prep
         card_id = f"pc-{uuid.uuid4().hex[:12]}"
@@ -217,7 +218,9 @@ class ProofCardGenerator:
         if n < profile.MIN_SAMPLES:
             return self._build_card(card_id, profile_ref, "INSUFFICIENT_EVIDENCE", 
                                     window_ref_str, ["INSUFFICIENT_SAMPLES"], 
-                                    n, [], [], [], manifest_ref_str)
+                                    n, [], [], 
+                                    [{"name": "sample_count", "value": n, "unit": "count"}], 
+                                    manifest_ref_str)
 
         # 2. Key Metrics Extraction
         # We need to map raw data keys to 'rtt_ms', 'loss_pct' etc.
@@ -294,6 +297,18 @@ class ProofCardGenerator:
         if not outcome_out: 
              outcome_out = [{"name": "no_metric_data", "value": 0, "unit": "none"}]
 
+        # 5.1 Extract Event Types
+        event_types = []
+        if events:
+            # Extract 'event_type' from each event dict
+            extracted = set()
+            for e in events:
+                etype = e.get("event_type")
+                if etype:
+                    extracted.add(etype)
+            event_types = list(extracted)
+            event_types.sort() # Ensure deterministic order
+
         # 6. Assess Validity (V1.3 Spec)
         # Check freshness of data
         ts_newest = 0
@@ -318,10 +333,13 @@ class ProofCardGenerator:
 
         return self._build_card(
             card_id, profile_ref, verdict, window_ref_str, reasons, n,
-            p50_out, p95_out, outcome_out, manifest_ref_str, validity_verdict
+            p50_out, p95_out, outcome_out, manifest_ref_str, validity_verdict,
+            event_types
         )
 
-    def _build_card(self, cid, pref, verdict, wref, reasons, n, p50, p95, outcome, mref, validity="VALID"):
+    def _build_card(self, cid, pref, verdict, wref, reasons, n, p50, p95, outcome, mref, validity="VALID", event_types=None):
+        if event_types is None:
+            event_types = []
         return {
             "proof_card_ref": cid,
             "profile_ref": pref,
@@ -337,7 +355,7 @@ class ProofCardGenerator:
             "p50": p50,
             "p95": p95,
             "outcome_facet": outcome,
-            "event_type": [],
+            "event_type": event_types,
             "evidence_bundle_ref": f"bundle:{wref}",
             "manifest_ref": mref
         }
@@ -352,5 +370,6 @@ def fp_lite_from_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
         window_data=bundle.get("window_data", []),
         profile_ref=bundle.get("profile_ref", "BASE"),
         window_ref_str=bundle.get("window_ref", "unknown"),
-        manifest_ref_str=bundle.get("manifest_ref", "TBD")
+        manifest_ref_str=bundle.get("manifest_ref", "TBD"),
+        events=bundle.get("events", [])
     )
