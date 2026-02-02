@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
-import { API_BASE_URL } from '../src/api'; // Assuming you have an api.js or similar, check FleetView for usage
 
 // Fallback if not exported cleanly
 // const API_BASE_URL = 'http://localhost:8000'; // Make sure this matches your environment (e.g. 10.0.2.2 for Android)

@@ -9,9 +9,20 @@ export default function OneButtonHelper({ onBack }) {
     const handlePress = async () => {
         setLoading(true);
         setResult(null);
-        const data = await triggerOBH();
-        setResult(data);
-        setLoading(false);
+
+        try {
+            const data = await triggerOBH();
+            if (!data) {
+                // API call failed completely (network error, etc)
+                throw new Error("Failed to contact server.");
+            }
+            setResult(data);
+        } catch (err) {
+            console.error(err);
+            setResult({ error: "Connection Failed. Check IP Settings." });
+        } finally {
+            setLoading(false);
+        }
     };
 
     const renderEvidence = (bundle) => {
@@ -56,7 +67,7 @@ export default function OneButtonHelper({ onBack }) {
                 </TouchableOpacity>
 
                 <Text style={styles.subtext}>
-                    {loading ? "Capturing timeline & metrics..." : "Tap to capture 30 min history"}
+                    {loading ? "Capturing timeline & metrics..." : "Tap to capture 7-day history"}
                 </Text>
 
                 {result && (
