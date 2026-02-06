@@ -1,0 +1,16 @@
+{
+  "spec": "DAE_P1_Priv_v2",
+  "proof_card_min": {
+    "episode_id": "test_standard",
+    "episode_start": "2023-11-14T22:13:20Z",
+    "primary_verdict": "WIFI_CONGESTION",
+    "admission_verdict": "ADMIT",
+    "admission_effect": "none",
+    "privacy_check_verdict": "PASS",
+    "evidence_grade": "DELIVERY_GRADE",
+    "egress_receipt_ref": "EGRESS-C8C019EA",
+    "byuse_context_ref": null
+  },
+  "proof_card_priv": null,
+  "payload": "REDACTED: PRE-ADMISSION or UNAUTHORIZED"
+}

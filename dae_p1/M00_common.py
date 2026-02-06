@@ -7,6 +7,7 @@ No remediation, no network control, no optimization.
 from __future__ import annotations
 from dataclasses import dataclass, asdict, field
 from typing import Dict, Any, List, Optional, Literal, Tuple
+from enum import Enum
 import time
 import json
 import hashlib
@@ -70,6 +71,70 @@ class ReasonCode:
     PLANT_IMPAIRMENT_SUSPECT = "PLANT_IMPAIRMENT_SUSPECT"
     # Generic
     PASSED_ALL_CHECKS = "PASSED_ALL_CHECKS"
+
+
+class EvidenceGrade(str, Enum):
+    DELIVERY_GRADE = "DELIVERY_GRADE"       # 完整證據，可結案
+    PARTIAL_RELIANCE = "PARTIAL_RELIANCE"   # 受限引用，證據力不足
+    NOT_CLOSURE_GRADE = "NOT_CLOSURE_GRADE" # 隱私缺失，不可結案
+
+class AdmissionVerdict(str, Enum):
+    ADMIT = "ADMIT"     # 正常進入
+    DENY = "DENY"       # 拒絕進入
+    DEGRADE = "DEGRADE" # 降級進入 (剝離敏感資料)
+
+class PrivacyCheckVerdict(str, Enum):
+    PASS = "PASS"
+    FAIL = "FAIL"
+    INCONCLUSIVE = "INCONCLUSIVE"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+@dataclass
+class PrivacyPolicyRef:
+    policy_id: str
+    version: str = "1.0"
+    is_active: bool = True
+
+@dataclass
+class PurposeRef:
+    purpose_id: str  # e.g., "network_optimization"
+
+@dataclass
+class RetentionRef:
+    policy_id: str
+    days: int = 30
+
+@dataclass
+class DisclosureScopeRef:
+    scope_id: str    # e.g., "internal_engineering", "isp_support"
+
+@dataclass
+class ProofCardMin:
+    """Minimized Proof Card: Safe for general handling."""
+    episode_id: str
+    episode_start: str
+    primary_verdict: str
+    admission_verdict: AdmissionVerdict
+    admission_effect: str
+    privacy_check_verdict: PrivacyCheckVerdict
+    evidence_grade: EvidenceGrade
+    egress_receipt_ref: Optional[str] = None
+    byuse_context_ref: Optional[str] = None
+    
+@dataclass
+class ProofCardPriv:
+    """Privileged Proof Card: Contains sensitive refs/data."""
+    # References to policies acting as the "authorization" for this data
+    privacy_policy_ref: Optional[PrivacyPolicyRef] = None
+    purpose_ref: Optional[PurposeRef] = None
+    retention_ref: Optional[RetentionRef] = None
+    disclosure_scope_ref: Optional[DisclosureScopeRef] = None
+    redaction_profile_ref: Optional[str] = None
+    privacy_violation_flag: bool = False
+    privacy_violation_reason_code: List[str] = field(default_factory=list)
+
+    
+
 
 
 @dataclass

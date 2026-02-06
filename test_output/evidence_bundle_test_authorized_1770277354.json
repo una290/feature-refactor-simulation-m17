@@ -1,0 +1,62 @@
+{
+  "spec": "DAE_P1_Priv_v2",
+  "proof_card_min": {
+    "episode_id": "test_authorized",
+    "episode_start": "2023-11-14T22:13:20Z",
+    "primary_verdict": "WIFI_CONGESTION",
+    "admission_verdict": "ADMIT",
+    "admission_effect": "none",
+    "privacy_check_verdict": "PASS",
+    "evidence_grade": "DELIVERY_GRADE",
+    "egress_receipt_ref": "EGRESS-F78D0FF8",
+    "byuse_context_ref": null
+  },
+  "proof_card_priv": {
+    "privacy_policy_ref": {
+      "policy_id": "pol-default",
+      "version": "1.0",
+      "is_active": true
+    },
+    "purpose_ref": {
+      "purpose_id": "diagnosis"
+    },
+    "retention_ref": {
+      "policy_id": "ret-30d",
+      "days": 30
+    },
+    "disclosure_scope_ref": {
+      "scope_id": "isp-support"
+    },
+    "redaction_profile_ref": "REDACT.MIN",
+    "privacy_violation_flag": false,
+    "privacy_violation_reason_code": []
+  },
+  "payload": {
+    "timeline": {
+      "metrics_points": [
+        {
+          "t": "2023-11-14T22:13:20Z",
+          "window_ref": "w1",
+          "latency_p95_ms": 20.0,
+          "loss_pct": null,
+          "retry_pct": null,
+          "airtime_busy_pct": null,
+          "mesh_flap_count": null,
+          "wan_sinr_db": null
+        }
+      ],
+      "change_events": [],
+      "pre_change_snapshots": []
+    },
+    "observability": {
+      "observability_status": "SUFFICIENT",
+      "opaque_risk": false,
+      "missing_refs": [],
+      "origin_hint": "unknown"
+    },
+    "evidence_refs": [
+      "ref1",
+      "ref2"
+    ]
+  }
+}
