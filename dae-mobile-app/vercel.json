@@ -1,0 +1,1 @@
+{"public": true, "cleanUrls": true, "outputDirectory": "dist", "rewrites": [{"source": "/(.*)", "destination": "/index.html"}]} 
