@@ -24,7 +24,7 @@ export default function InstallationVerifier({ onBack }) {
         <View style={styles.card}>
             <Text style={styles.cardLabel}>{label}</Text>
             <Text style={styles.cardValue}>
-                {value !== null && value !== undefined ? value : 'N/A'} 
+                {value !== null && value !== undefined ? value : 'N/A'}
                 <Text style={styles.cardUnit}> {unit}</Text>
             </Text>
             {limit && (
@@ -62,7 +62,7 @@ export default function InstallationVerifier({ onBack }) {
                 <Text style={styles.title}>Installation Verifier</Text>
             </View>
 
-            <ScrollView 
+            <ScrollView
                 contentContainerStyle={styles.content}
                 refreshControl={<RefreshControl refreshing={loading} onRefresh={handleVerify} />}
             >
@@ -106,24 +106,24 @@ export default function InstallationVerifier({ onBack }) {
                         <View style={styles.section}>
                             <Text style={styles.sectionHeader}>KEY INSTALLATION INFO</Text>
                             <View style={styles.cardGrid}>
-                                <InfoRow 
-                                    label="DNS Status" 
+                                <InfoRow
+                                    label="WAN Status"
                                     value={sys.dns_status || "Unknown"}
-                                    isGood={sys.dns_status === 'OK'} 
+                                    isGood={sys.dns_status === 'OK'}
                                 />
-                                <InfoRow 
-                                    label="WiFi Channel" 
+                                <InfoRow
+                                    label="WiFi Channel"
                                     value={sys.channel ? `Ch ${sys.channel}` : "Scanning..."}
                                     subValue={sys.radio_type ? `Radio: ${sys.radio_type}` : null}
                                     isGood={true} // Info only
                                 />
-                                <InfoRow 
-                                    label="Link Rate (Tx/Rx)" 
+                                <InfoRow
+                                    label="Link Rate (Tx/Rx)"
                                     value={`${sys.phy_rate_mbps || 0} / ${sys.phy_rx_rate_mbps || 0} Mbps`}
                                     isGood={(sys.phy_rate_mbps || 0) > (th.link_rate_min_mbps || 100)}
                                 />
-                                <InfoRow 
-                                    label="Signal Strength" 
+                                <InfoRow
+                                    label="Signal Strength"
                                     value={`${perf.signal_strength_pct || 0}%`}
                                     isGood={(perf.signal_strength_pct || 0) >= (th.signal_min_pct || 80)}
                                 />
@@ -134,30 +134,30 @@ export default function InstallationVerifier({ onBack }) {
                         <View style={styles.section}>
                             <Text style={styles.sectionHeader}>PERFORMANCE METRICS</Text>
                             <View style={styles.grid}>
-                                <MetricCard 
-                                    label="Latency (P95)" 
-                                    value={perf.latency_p95_ms?.toFixed(1)} 
+                                <MetricCard
+                                    label="Latency (P95)"
+                                    value={perf.latency_p95_ms?.toFixed(1)}
                                     unit="ms"
                                     limit={`< ${th.latency_max_ms || 60}`}
                                     isGood={(perf.latency_p95_ms || 0) <= (th.latency_max_ms || 60)}
                                 />
-                                <MetricCard 
-                                    label="Packet Loss" 
-                                    value={perf.loss_pct?.toFixed(1)} 
+                                <MetricCard
+                                    label="Packet Loss"
+                                    value={perf.loss_pct?.toFixed(1)}
                                     unit="%"
                                     limit={`< ${th.loss_max_pct || 1.0}`}
                                     isGood={(perf.loss_pct || 0) <= (th.loss_max_pct || 1.0)}
                                 />
-                                <MetricCard 
-                                    label="Retry Rate" 
-                                    value={perf.retry_pct?.toFixed(1)} 
+                                <MetricCard
+                                    label="Retry Rate"
+                                    value={perf.retry_pct?.toFixed(1)}
                                     unit="%"
                                     limit={`< ${th.retry_max_pct || 12}`}
                                     isGood={(perf.retry_pct || 0) <= (th.retry_max_pct || 12)}
                                 />
-                                <MetricCard 
-                                    label="Mesh Flaps" 
-                                    value={perf.mesh_flap_count?.toFixed(0)} 
+                                <MetricCard
+                                    label="Mesh Flaps"
+                                    value={perf.mesh_flap_count?.toFixed(0)}
                                     unit="ev"
                                     limit={`< ${th.mesh_flap_max || 2}`}
                                     isGood={(perf.mesh_flap_count || 0) < (th.mesh_flap_max || 2)}
@@ -180,7 +180,7 @@ export default function InstallationVerifier({ onBack }) {
                             <Text style={styles.footerText}>
                                 Verify Window: {result.verify_window_sec} sec
                             </Text>
-                            
+
                             <TouchableOpacity style={styles.reverifyButton} onPress={handleVerify}>
                                 <Text style={styles.reverifyText}>RE-VERIFY</Text>
                             </TouchableOpacity>
