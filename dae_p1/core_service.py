@@ -52,7 +52,7 @@ class OBHCoreService:
 
         self.windowing = Windowing()
         self.recognition = RecognitionEngine()
-        self.obh = OBHController(TimelineBuilder(), BundleExporter())
+        self.obh = OBHController(BundleExporter())
 
     def tick_once(self) -> None:
         m = self.adapter.collect_metric_sample()
@@ -90,7 +90,7 @@ class OBHCoreService:
             worst_window_ref=worst_window_ref
         )
 
-    def obh_export(self, out_dir: str) -> OBHResult:
+    def obh_export(self, out_dir: str, authority_scope_ref: Optional[str] = None) -> OBHResult:
         """
         Perform OBH export using current buffers.
         """
@@ -100,5 +100,6 @@ class OBHCoreService:
             recognition=rec,
             metrics=self.metrics_buf.snapshot(),
             events=self.events_buf.snapshot(),
-            snapshots=self.snaps_buf.snapshot()
+            snapshots=self.snaps_buf.snapshot(),
+            authority_scope_ref=authority_scope_ref
         )

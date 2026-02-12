@@ -15,90 +15,65 @@ class OBHResult:
 
 class OBHController:
     """
-    One-Button Help (OBH): FREEZE_BUFFER + GENERATE_TIMELINE + EXPORT_BUNDLE.
-    Never changes network settings.
+    One-Button Help (OBH): TRIGGER -> M13 GENERATE -> M22 EGRESS -> EXPORT.
+    Refactored for Unified Privacy Architecture (One Spine).
     """
-    def __init__(self, timeline_builder: TimelineBuilder, exporter: BundleExporter):
-        self.timeline_builder = timeline_builder
+    def __init__(self, exporter: BundleExporter):
         self.exporter = exporter
         self.last_result: Optional[OBHResult] = None
-        self.governance = PrivacyGovernance(strict_mode=False) # Configurable in real app
+        # M12 controls the Egress, M13 controls internal hooks
+        self.governance = PrivacyGovernance(strict_mode=False)
+        
+        # [NEW] Use ProofCardGenerator (M13)
+        from .M13_fp_lite import ProofCardGenerator
+        self.pc_generator = ProofCardGenerator()
 
     def run(self, out_dir: str, recognition: EpisodeRecognition,
-            metrics, events, snapshots, 
+            metrics: List[Any], events: List[Any], snapshots: List[Any],
             byuse_context_ref: Optional[str] = None,
             authority_scope_ref: Optional[str] = None) -> OBHResult:
         
-        # 1. Pipeline: Privacy Check
-        passed, msg, policy_refs = self.governance.privacy_check(recognition)
-        
-        # 2. Pipeline: BYUSE Qualify
-        # Determine the provisional grade based on observability or existing flow
-        # For now, we assume DELIVERY_GRADE as baseline unless downgraded.
-        tmp_grade = EvidenceGrade.DELIVERY_GRADE
-        final_grade, upgrade_req = self.governance.byuse_qualify(byuse_context_ref, tmp_grade)
-        
-        # 3. Pipeline: Admission Decide
-        adm_verdict, adm_effect, final_grade = self.governance.admission_decide(passed, final_grade)
-        
-        # 4. Build Proof Cards (Internal/Speculative)
-        timeline = self.timeline_builder.build(metrics, events, snapshots)
-        
-        # Construct PC-Min
-        # We need to map boolean passed to Enum
-        # M00 defines PrivacyCheckVerdict
-        try:
-             # If we imported the Enum
-             from .M00_common import PrivacyCheckVerdict
-             priv_verdict = PrivacyCheckVerdict.PASS if passed else PrivacyCheckVerdict.FAIL
-        except ImportError:
-             priv_verdict = "PASS" if passed else "FAIL"
-
-        pc_min = ProofCardMin(
-            episode_id=recognition.episode_id,
-            episode_start=iso(recognition.episode_start),
-            primary_verdict=recognition.primary_verdict,
-            admission_verdict=adm_verdict,
-            admission_effect=adm_effect,
-            privacy_check_verdict=priv_verdict,
-            evidence_grade=final_grade,
+        # 1. Generate Unified ProofCard (includes Hook 1-3 + Freeze)
+        # We pass the raw data objects to M13
+        full_card = self.pc_generator.generate(
+            metrics=metrics,
+            events=events,
+            snapshots=snapshots,
+            profile_ref="WIFI78_INSTALL_ACCEPT", # Configurable?
+            window_ref_str=recognition.worst_window_ref or "W-LATEST",
+            authority_scope_ref=authority_scope_ref,
             byuse_context_ref=byuse_context_ref
         )
-        if upgrade_req:
-             # Add to missing class or similar if we had a field. 
-             # For now, relying on evidence_grade=NOT_CLOSURE_GRADE to signal it.
-             pass
         
-        # Construct PC-Priv (if we have refs)
-        pc_priv = None
-        if policy_refs:
-             pc_priv = ProofCardPriv(
-                 privacy_policy_ref=policy_refs.get("policy"),
-                 purpose_ref=policy_refs.get("purpose"),
-                 retention_ref=policy_refs.get("retention"),
-                 disclosure_scope_ref=policy_refs.get("disclosure"),
-                 redaction_profile_ref=policy_refs.get("redaction")
-             )
-
-        # 5. Pipeline: Egress Gate (The One Spine Check)
+        # 2. Pipeline: Egress Gate (Hook 4)
         # Decide what actually leaves
-        final_min, final_priv = self.governance.egress_gate(pc_min, pc_priv, authority_scope_ref)
+        final_min, final_priv = self.governance.egress_gate(
+            full_card.pc_min, full_card.pc_priv, authority_scope_ref
+        )
         
-        # Assemble Final Bundle Dict
+        # 3. Assemble Final Bundle Dict
         bundle = {
             "spec": "DAE_P1_Priv_v2",
             "proof_card_min": asdict(final_min),
             "proof_card_priv": asdict(final_priv) if final_priv else None,
         }
         
+        # Extract/Embed Logic based on Privacy
         if final_priv:
+            # We have access to sensitive data
+            frozen = final_priv.frozen_timeline or {}
             bundle["payload"] = {
-                "timeline": timeline,
+                "timeline": frozen.get("timeline"),
+                "engineering_proof": frozen.get("engineering_proof"),
                 "observability": asdict(recognition.observability), 
                 "evidence_refs": recognition.evidence_refs
             }
+            # [INTEGRATION SUPPORT]
+            # Expose the detailed card at root if allowed, so frontend works
+            bundle["proof_card_v13"] = frozen.get("engineering_proof")
         else:
             bundle["payload"] = "REDACTED: PRE-ADMISSION or UNAUTHORIZED"
+            # No proof_card_v13 at root if unauthorized!
             
         path = self.exporter.export(out_dir, recognition.episode_id, bundle)
         res = OBHResult(episode_id=recognition.episode_id, exported_path=path, bundle_content=bundle)

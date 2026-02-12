@@ -132,6 +132,14 @@ class ProofCardPriv:
     redaction_profile_ref: Optional[str] = None
     privacy_violation_flag: bool = False
     privacy_violation_reason_code: List[str] = field(default_factory=list)
+    # [NEW] Phase 2: Frozen Data
+    frozen_timeline: Optional[Dict[str, Any]] = None
+
+@dataclass
+class ProofCard:
+    """Unified ProofCard (One Spine)"""
+    pc_min: ProofCardMin
+    pc_priv: ProofCardPriv
 
     
 

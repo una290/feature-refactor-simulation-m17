@@ -25,11 +25,83 @@ export default function OneButtonHelper({ onBack }) {
         }
     };
 
+    const ExpandableSection = ({ title, children, defaultExpanded = false }) => {
+        const [expanded, setExpanded] = useState(defaultExpanded);
+        return (
+            <View style={styles.sectionContainer}>
+                <TouchableOpacity style={styles.sectionHeader} onPress={() => setExpanded(!expanded)}>
+                    <Text style={styles.sectionTitle}>{title}</Text>
+                    <Text style={styles.sectionArrow}>{expanded ? '▼' : '▶'}</Text>
+                </TouchableOpacity>
+                {expanded && <View style={styles.sectionContent}>{children}</View>}
+            </View>
+        );
+    };
+
     const renderEvidence = (bundle) => {
-        if (!bundle || !bundle.evidence_refs) return null;
+        if (!bundle) return null;
+
+        // 1. Try to read V1.3 Proof Card (New Path: Root)
+        const v13Card = bundle.proof_card_v13;
+        if (v13Card) {
+            const isReady = v13Card.verdict === 'READY';
+            const color = isReady ? '#2e7d32' : '#c62828';
+
+            return (
+                <View>
+                    <View style={{ marginBottom: 15, alignItems: 'center' }}>
+                        <Text style={{ fontWeight: 'bold', fontSize: 20, color: color }}>
+                            {v13Card.verdict}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: '#666' }}>
+                            Episode: {v13Card.proof_card_ref || 'N/A'}
+                        </Text>
+                    </View>
+
+                    <ExpandableSection title="Reason Codes" defaultExpanded={true}>
+                        {v13Card.reason_code && v13Card.reason_code.length > 0 ? (
+                            v13Card.reason_code.map((code, idx) => (
+                                <Text key={idx} style={styles.failureText}>• {code}</Text>
+                            ))
+                        ) : (
+                            <Text style={styles.noFailuresText}>No failure codes found.</Text>
+                        )}
+                    </ExpandableSection>
+
+                    <ExpandableSection title="Key Metrics (p50)">
+                        {v13Card.p50 && v13Card.p50.map((m, idx) => (
+                            <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', paddingBottom: 2 }}>
+                                <Text style={{ fontSize: 12, color: '#555', flex: 1 }}>{m.name}:</Text>
+                                <Text style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{m.value}</Text>
+                            </View>
+                        ))}
+                    </ExpandableSection>
+
+                    <ExpandableSection title="Privacy Governance">
+                        <Text style={styles.label}>Admission Verdict: {v13Card.admission_verdict || 'N/A'}</Text>
+                        <Text style={styles.label}>Evidence Grade: {v13Card.evidence_grade || 'N/A'}</Text>
+                        <Text style={styles.label}>Privacy Check: {v13Card.privacy_check_verdict || 'N/A'}</Text>
+                    </ExpandableSection>
+
+                    <ExpandableSection title="Raw Data (JSON)">
+                        <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled={true}>
+                            <Text style={{ fontFamily: 'monospace', fontSize: 10, color: '#333' }}>
+                                {JSON.stringify(v13Card, null, 2)}
+                            </Text>
+                        </ScrollView>
+                    </ExpandableSection>
+                </View>
+            );
+        }
+
+        // 2. Legacy Fallback (Old Path or just evidence_refs)
+        // Check deep payload path first
+        let refs = bundle.payload?.evidence_refs || bundle.evidence_refs;
+
+        if (!refs) return <Text style={styles.noFailuresText}>No specific evidence refs found.</Text>;
 
         // Filter out "no_flags"
-        const failures = bundle.evidence_refs.filter(ref => !ref.includes('no_flags'));
+        const failures = refs.filter(ref => !ref.includes('no_flags'));
 
         if (failures.length === 0) {
             return <Text style={styles.noFailuresText}>No flagged evidence refs found.</Text>;
@@ -77,12 +149,12 @@ export default function OneButtonHelper({ onBack }) {
                         ) : (
                             <>
                                 <Text style={styles.successTitle}>✓ Bundle Exported!</Text>
-                                <Text style={styles.label}>Episode ID:</Text>
-                                <Text style={styles.value}>{result.episode_id}</Text>
+                                {/* <Text style={styles.label}>Episode ID:</Text>
+                                <Text style={styles.value}>{result.episode_id}</Text> */}
                                 <Text style={styles.label}>Location:</Text>
                                 <Text style={styles.value}>{result.path}</Text>
 
-                                <Text style={[styles.label, { marginTop: 15 }]}>Failure Evidence:</Text>
+                                <Text style={[styles.label, { marginTop: 15, marginBottom: 5 }]}>Failure Evidence:</Text>
                                 <View style={styles.jsonBox}>
                                     {renderEvidence(result.bundle)}
                                 </View>
@@ -210,5 +282,33 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontStyle: 'italic',
         color: '#888'
+    },
+    // New Styles
+    sectionContainer: {
+        marginBottom: 8,
+        backgroundColor: '#fafafa',
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#eee',
+        overflow: 'hidden'
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 10,
+        backgroundColor: '#f1f1f1'
+    },
+    sectionTitle: {
+        fontWeight: 'bold',
+        fontSize: 14,
+        color: '#333'
+    },
+    sectionArrow: {
+        fontSize: 14,
+        color: '#777'
+    },
+    sectionContent: {
+        padding: 10
     }
 });

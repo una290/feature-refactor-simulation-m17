@@ -486,7 +486,9 @@ def trigger_obh():
         # Export to current directory or a 'bundles' subdir
         import os
         os.makedirs("bundles", exist_ok=True)
-        res = core.obh_export("bundles")
+        # Pass authority_scope_ref="isp-support" to simulate an authorized engineer
+        # This ensures the ProofCard V1.3 is visible in the frontend app.
+        res = core.obh_export("bundles", authority_scope_ref="isp-support")
         return {
             "status": "Exported",
             "episode_id": res.episode_id,
