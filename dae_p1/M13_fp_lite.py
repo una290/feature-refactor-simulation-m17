@@ -1,12 +1,12 @@
 
 from __future__ import annotations
-from typing import Dict, Any, List, Optional, Tuple, NamedTuple
+from typing import Dict, Any, List, Optional, Tuple, NamedTuple, Literal
 import statistics
 import math
 import time
 import uuid
 import json
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from .M00_common import (
     ReasonCode, ProofCard, ProofCardMin, ProofCardPriv, 
     AdmissionVerdict, EvidenceGrade, PrivacyCheckVerdict,
@@ -55,11 +55,19 @@ class ProofCardResult:
 # - min_sample_count
 # - strict_checks: function(p50_map, p95_map) -> list of failure_reason_codes
 
+@dataclass
+class CheckResult:
+    name: str # e.g. "Latency (P95)"
+    threshold: str # e.g. "<= 60ms"
+    actual: str # e.g. "45.2ms"
+    status: Literal["PASS", "FAIL"]
+    reason_code: Optional[str] = None
+
 class ProfileBase:
     REF = "BASE"
     MIN_SAMPLES = 10
     
-    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[str]:
+    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[CheckResult]:
         return []
 
 # --- Wi-Fi 7/8 Profiles ---
@@ -69,42 +77,59 @@ class Wifi78InstallAccept(ProfileBase):
     MIN_SAMPLES = 10
     # Outcome: rtt_ms_p95, loss_rate_p95, wifi_retry_p95, phy_rate_p50
     
-    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[str]:
-        reasons = []
-        # P95 RTT > 60ms (Warning/Fail)
-        if p95.get("rtt_ms", 0) > 60.0:
-            reasons.append(ReasonCode.P95_RTT_TOO_HIGH)
-        # P95 Loss > 1%
-        if p95.get("loss_pct", 0) > 1.0:
-            reasons.append(ReasonCode.P95_LOSS_TOO_HIGH)
-        # Retry > 10%
-        if p95.get("retry_pct", 0) > 10.0:
-             reasons.append(ReasonCode.WIFI_SIDE_OSCILLATION)
-        # Phy Rate < 100Mbps
-        if p50.get("phy_rate_mbps", 9999) < 100:
-             reasons.append("LOW_PHY_RATE")
-        return reasons
+    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[CheckResult]:
+        results = []
+        
+        # 1. Latency Check
+        val = p95.get("rtt_ms", 0)
+        status = "FAIL" if val > 60.0 else "PASS"
+        rc = ReasonCode.P95_RTT_TOO_HIGH if status == "FAIL" else None
+        results.append(CheckResult("Latency (P95)", "<= 60ms", f"{val:.1f}ms", status, rc))
+
+        # 2. Loss Check
+        val = p95.get("loss_pct", 0)
+        status = "FAIL" if val > 1.0 else "PASS"
+        rc = ReasonCode.P95_LOSS_TOO_HIGH if status == "FAIL" else None
+        results.append(CheckResult("Packet Loss (P95)", "<= 1.0%", f"{val:.1f}%", status, rc))
+
+        # 3. Retry Check
+        val = p95.get("retry_pct", 0)
+        status = "FAIL" if val > 10.0 else "PASS"
+        rc = ReasonCode.WIFI_SIDE_OSCILLATION if status == "FAIL" else None
+        results.append(CheckResult("Wi-Fi Retry (P95)", "<= 10.0%", f"{val:.1f}%", status, rc))
+
+        # 4. Phy Rate Check
+        val = p50.get("phy_rate_mbps", 9999)
+        status = "FAIL" if val < 100 else "PASS"
+        rc = "LOW_PHY_RATE" if status == "FAIL" else None
+        results.append(CheckResult("Phy Rate (P50)", ">= 100Mbps", f"{int(val)}Mbps", status, rc))
+
+        return results
 
 class Wifi78MeshBackhaulSplit(ProfileBase):
     REF = "WIFI78_MESH_BACKHAUL_SPLIT"
     MIN_SAMPLES = 10
     
-    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[str]:
-        reasons = []
+    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[CheckResult]:
+        results = []
         # Signal Check (p5 is worst case for signal)
-        if p5.get("backhaul_rssi", -30) < -75:
-            reasons.append(ReasonCode.MESH_BACKHAUL_LIMITER)
-        return reasons
+        val = p5.get("backhaul_rssi", -30)
+        status = "FAIL" if val < -75 else "PASS"
+        rc = ReasonCode.MESH_BACKHAUL_LIMITER if status == "FAIL" else None
+        results.append(CheckResult("Backhaul RSSI (P5)", ">= -75dBm", f"{int(val)}dBm", status, rc))
+        return results
 
 class Wifi78OscillationGuard(ProfileBase):
     REF = "WIFI78_OSCILLATION_GUARD"
     MIN_SAMPLES = 20
     
-    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[str]:
-        reasons = []
-        if p95.get("retry_pct", 0) > 15.0:
-             reasons.append(ReasonCode.WIFI_SIDE_OSCILLATION)
-        return reasons
+    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[CheckResult]:
+        results = []
+        val = p95.get("retry_pct", 0)
+        status = "FAIL" if val > 15.0 else "PASS"
+        rc = ReasonCode.WIFI_SIDE_OSCILLATION if status == "FAIL" else None
+        results.append(CheckResult("Retry Rate (P95)", "<= 15.0%", f"{val:.1f}%", status, rc))
+        return results
 
 # --- FWA Profiles ---
 
@@ -112,36 +137,46 @@ class FwaInstallAccept(ProfileBase):
     REF = "FWA_INSTALL_ACCEPT"
     MIN_SAMPLES = 10
     
-    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[str]:
-        reasons = []
+    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[CheckResult]:
+        results = []
         # RSRP < -110 dBm
-        if p5.get("wan_rsrp_dbm", -50) < -110:
-             reasons.append(ReasonCode.WEAK_COVERAGE_RSRP_P5)
+        val = p5.get("wan_rsrp_dbm", -50)
+        status = "FAIL" if val < -110 else "PASS"
+        rc = ReasonCode.WEAK_COVERAGE_RSRP_P5 if status == "FAIL" else None
+        results.append(CheckResult("WAN RSRP (P5)", ">= -110dBm", f"{int(val)}dBm", status, rc))
+
         # SINR < 0 dB
-        if p5.get("wan_sinr_db", 20) < 0:
-             reasons.append(ReasonCode.LOW_SINR_P5)
-        return reasons
+        val = p5.get("wan_sinr_db", 20)
+        status = "FAIL" if val < 0 else "PASS"
+        rc = ReasonCode.LOW_SINR_P5 if status == "FAIL" else None
+        results.append(CheckResult("WAN SINR (P5)", ">= 0dB", f"{val:.1f}dB", status, rc))
+        
+        return results
 
 class FwaPlacementGuide(ProfileBase):
     REF = "FWA_PLACEMENT_GUIDE"
     MIN_SAMPLES = 10
     
-    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[str]:
-        reasons = []
+    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[CheckResult]:
+        results = []
         # Check signal direction
-        if p5.get("wan_rsrp_dbm", -50) < -100:
-             reasons.append(ReasonCode.WEAK_COVERAGE_RSRP_P5)
-        return reasons
+        val = p5.get("wan_rsrp_dbm", -50)
+        status = "FAIL" if val < -100 else "PASS"
+        rc = ReasonCode.WEAK_COVERAGE_RSRP_P5 if status == "FAIL" else None
+        results.append(CheckResult("WAN RSRP (P5)", ">= -100dBm", f"{int(val)}dBm", status, rc))
+        return results
 
 class FwaCongestionSuspect(ProfileBase):
     REF = "FWA_CONGESTION_SUSPECT"
     MIN_SAMPLES = 20
     
-    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[str]:
-        reasons = []
-        if p95.get("rtt_ms", 0) > 100.0:
-            reasons.append(ReasonCode.TAIL_RTT_TOO_HIGH)
-        return reasons
+    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[CheckResult]:
+        results = []
+        val = p95.get("rtt_ms", 0)
+        status = "FAIL" if val > 100.0 else "PASS"
+        rc = ReasonCode.TAIL_RTT_TOO_HIGH if status == "FAIL" else None
+        results.append(CheckResult("Latency (P95)", "<= 100ms", f"{val:.1f}ms", status, rc))
+        return results
 
 # --- Cable Profiles ---
 
@@ -149,37 +184,58 @@ class CableInstallAccept(ProfileBase):
     REF = "CABLE_INSTALL_ACCEPT"
     MIN_SAMPLES = 10
     
-    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[str]:
-        reasons = []
-        if p95.get("us_rtt_ms", 0) > 80.0: # Example
-             reasons.append(ReasonCode.TAIL_US_RTT_TOO_HIGH)
-        if p5.get("ofdm_mer_db", 50) < 32.0:
-             reasons.append(ReasonCode.PLANT_IMPAIRMENT_SUSPECT)
-        return reasons
+    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[CheckResult]:
+        results = []
+        
+        val = p95.get("us_rtt_ms", 0)
+        status = "FAIL" if val > 80.0 else "PASS"
+        rc = ReasonCode.TAIL_US_RTT_TOO_HIGH if status == "FAIL" else None
+        results.append(CheckResult("US Latency (P95)", "<= 80ms", f"{val:.1f}ms", status, rc))
+
+        val = p5.get("ofdm_mer_db", 50)
+        status = "FAIL" if val < 32.0 else "PASS"
+        rc = ReasonCode.PLANT_IMPAIRMENT_SUSPECT if status == "FAIL" else None
+        results.append(CheckResult("OFDM MER (P5)", ">= 32.0dB", f"{val:.1f}dB", status, rc))
+        
+        return results
 
 class CableUpstreamIntermittent(ProfileBase):
     REF = "CABLE_UPSTREAM_INTERMITTENT"
     MIN_SAMPLES = 20
     
-    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[str]:
-        reasons = []
-        if p95.get("t3_count", 0) > 5:
-             reasons.append(ReasonCode.T3T4_RETRY_BURST)
-        if p95.get("us_rtt_ms", 0) > 150.0:
-             reasons.append(ReasonCode.TAIL_US_RTT_TOO_HIGH)
-        return reasons
+    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[CheckResult]:
+        results = []
+        
+        val = p95.get("t3_count", 0)
+        status = "FAIL" if val > 5 else "PASS"
+        rc = ReasonCode.T3T4_RETRY_BURST if status == "FAIL" else None
+        results.append(CheckResult("T3 Count (P95)", "<= 5", f"{int(val)}", status, rc))
+
+        val = p95.get("us_rtt_ms", 0)
+        status = "FAIL" if val > 150.0 else "PASS"
+        rc = ReasonCode.TAIL_US_RTT_TOO_HIGH if status == "FAIL" else None
+        results.append(CheckResult("US Latency (P95)", "<= 150ms", f"{val:.1f}ms", status, rc))
+
+        return results
 
 class CablePlantImpairmentSuspect(ProfileBase):
     REF = "CABLE_PLANT_IMPAIRMENT_SUSPECT"
     MIN_SAMPLES = 20
     
-    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[str]:
-        reasons = []
-        if p5.get("ofdm_mer_db", 50) < 30.0:
-             reasons.append(ReasonCode.PLANT_IMPAIRMENT_SUSPECT)
-        if p95.get("fec_corrected", 0) > 1000:
-             reasons.append(ReasonCode.PLANT_IMPAIRMENT_SUSPECT)
-        return reasons
+    def check(self, p50: Dict[str, float], p95: Dict[str, float], p5: Dict[str, float]) -> List[CheckResult]:
+        results = []
+        
+        val = p5.get("ofdm_mer_db", 50)
+        status = "FAIL" if val < 30.0 else "PASS"
+        rc = ReasonCode.PLANT_IMPAIRMENT_SUSPECT if status == "FAIL" else None
+        results.append(CheckResult("OFDM MER (P5)", ">= 30.0dB", f"{val:.1f}dB", status, rc))
+        
+        val = p95.get("fec_corrected", 0)
+        status = "FAIL" if val > 1000 else "PASS"
+        rc = ReasonCode.PLANT_IMPAIRMENT_SUSPECT if status == "FAIL" else None
+        results.append(CheckResult("FEC Corr (P95)", "<= 1000", f"{int(val)}", status, rc))
+
+        return results
 
 class ProfileManager:
     PROFILES = {
@@ -363,7 +419,11 @@ class ProofCardGenerator:
                 p5_map[k]  = qc.calculate(vals, 5)
 
         # 4. Assess Verdict
-        reasons = profile.check(p50_map, p95_map, p5_map)
+        check_results = profile.check(p50_map, p95_map, p5_map)
+        
+        # Extract reasons from failed checks
+        reasons = [r.reason_code for r in check_results if r.status == "FAIL" and r.reason_code]
+        
         verdict = "NOT_READY" if reasons else "READY"
         if not reasons: reasons = [ReasonCode.PASSED_ALL_CHECKS]
 
@@ -390,17 +450,20 @@ class ProofCardGenerator:
         return self._build_card(
             card_id, profile_ref, verdict, window_ref_str, reasons, n,
             p50_out, p95_out, outcome_out, manifest_ref_str, "VALID",
-            event_types
+            event_types, check_results
         )
         
-    def _build_card(self, cid, pref, verdict, wref, reasons, n, p50, p95, outcome, mref, validity="VALID", event_types=None):
+    def _build_card(self, cid, pref, verdict, wref, reasons, n, p50, p95, outcome, mref, validity="VALID", event_types=None, check_results=None):
         if event_types is None: event_types = []
+        if check_results is None: check_results = []
+        
         return {
             "proof_card_ref": cid,
             "profile_ref": pref,
             "verdict": verdict,
             "window_ref": wref,
             "reason_code": reasons,
+            "health_checks": [asdict(r) for r in check_results], # New Field
             "enforcement_path_ref": "EP-DEFAULT-01",
             "authority_scope_ref": "SCOPE-CPE-LOCAL",
             "validity_horizon_ref": "7DAYS",

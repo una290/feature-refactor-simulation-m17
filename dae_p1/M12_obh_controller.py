@@ -59,6 +59,19 @@ class OBHController:
         }
         
         # Extract/Embed Logic based on Privacy
+        # Extract/Embed Logic based on Privacy
+        # Base shim from PC-Min (Always Safe)
+        v13_shim = {
+            "verdict": full_card.pc_min.primary_verdict,
+            "evidence_grade": full_card.pc_min.evidence_grade.value if hasattr(full_card.pc_min.evidence_grade, "value") else full_card.pc_min.evidence_grade,
+            "admission_verdict": full_card.pc_min.admission_verdict.value if hasattr(full_card.pc_min.admission_verdict, "value") else full_card.pc_min.admission_verdict,
+            "privacy_check_verdict": full_card.pc_min.privacy_check_verdict.value if hasattr(full_card.pc_min.privacy_check_verdict, "value") else full_card.pc_min.privacy_check_verdict,
+            "episode_start": full_card.pc_min.episode_start,
+            "episode_id": full_card.pc_min.episode_id,
+        }
+        
+
+
         if final_priv:
             # We have access to sensitive data
             frozen = final_priv.frozen_timeline or {}
@@ -69,12 +82,14 @@ class OBHController:
                 "evidence_refs": recognition.evidence_refs
             }
             # [INTEGRATION SUPPORT]
-            # Expose the detailed card at root if allowed, so frontend works
-            bundle["proof_card_v13"] = frozen.get("engineering_proof")
+            # Merge Engineering Proof into Shim
+            eng_proof = frozen.get("engineering_proof", {})
+            v13_shim.update(eng_proof)
         else:
             bundle["payload"] = "REDACTED: PRE-ADMISSION or UNAUTHORIZED"
-            # No proof_card_v13 at root if unauthorized!
             
+        bundle["proof_card_v13"] = v13_shim
+        
         path = self.exporter.export(out_dir, recognition.episode_id, bundle)
         res = OBHResult(episode_id=recognition.episode_id, exported_path=path, bundle_content=bundle)
         self.last_result = res
