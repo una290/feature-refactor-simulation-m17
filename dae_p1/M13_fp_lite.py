@@ -296,6 +296,18 @@ class ProofCardGenerator:
             if hasattr(m, '__dict__'): window_data.append(asdict(m))
             elif isinstance(m, dict): window_data.append(m)
             
+        # [NEW] Calculate Data Range
+        min_ts = None
+        max_ts = None
+        if window_data:
+            timestamps = [d.get("ts", 0) for d in window_data if d.get("ts")]
+            if timestamps:
+                min_ts = min(timestamps)
+                max_ts = max(timestamps)
+                
+        min_ts_iso = iso(min_ts) if min_ts else None
+        max_ts_iso = iso(max_ts) if max_ts else None
+            
         dummy_rec = EpisodeRecognition(
             episode_id=f"ep-{uuid.uuid4().hex[:8]}",
             episode_start=time.time(),
@@ -348,7 +360,9 @@ class ProofCardGenerator:
             admission_effect=adm_effect,
             privacy_check_verdict=priv_verdict,
             evidence_grade=final_grade,
-            byuse_context_ref=byuse_context_ref
+            byuse_context_ref=byuse_context_ref,
+            data_range_start=min_ts_iso,
+            data_range_end=max_ts_iso
         )
         
         # 7. Construct PC-Priv

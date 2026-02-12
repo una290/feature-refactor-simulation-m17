@@ -120,6 +120,8 @@ class ProofCardMin:
     evidence_grade: EvidenceGrade
     egress_receipt_ref: Optional[str] = None
     byuse_context_ref: Optional[str] = None
+    data_range_start: Optional[str] = None
+    data_range_end: Optional[str] = None
     
 @dataclass
 class ProofCardPriv:

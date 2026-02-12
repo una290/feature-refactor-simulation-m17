@@ -68,6 +68,8 @@ class OBHController:
             "privacy_check_verdict": full_card.pc_min.privacy_check_verdict.value if hasattr(full_card.pc_min.privacy_check_verdict, "value") else full_card.pc_min.privacy_check_verdict,
             "episode_start": full_card.pc_min.episode_start,
             "episode_id": full_card.pc_min.episode_id,
+            "data_range_start": full_card.pc_min.data_range_start,
+            "data_range_end": full_card.pc_min.data_range_end,
         }
         
 
