@@ -6,6 +6,18 @@ from .M00_common import EpisodeRecognition, iso, ProofCardMin, ProofCardPriv, Ad
 from .M10_timeline_builder import TimelineBuilder
 from .M11_bundle_exporter import BundleExporter
 from .M22_privacy_governance import PrivacyGovernance
+from enum import Enum
+
+def _safe_serialize(obj):
+    if isinstance(obj, Enum):
+        return obj.value
+    if hasattr(obj, "__dataclass_fields__"):
+        return _safe_serialize(asdict(obj))
+    if isinstance(obj, dict):
+        return {k: _safe_serialize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_safe_serialize(v) for v in obj]
+    return obj
 
 @dataclass
 class OBHResult:
@@ -54,20 +66,21 @@ class OBHController:
         # 3. Assemble Final Bundle Dict
         bundle = {
             "spec": "DAE_P1_Priv_v2",
-            "proof_card_min": asdict(final_min),
-            "proof_card_priv": asdict(final_priv) if final_priv else None,
+            "proof_card_min": _safe_serialize(final_min),
+            "proof_card_priv": _safe_serialize(final_priv) if final_priv else None,
         }
         
         # Extract/Embed Logic based on Privacy
         # Extract/Embed Logic based on Privacy
         # Base shim from PC-Min (Always Safe)
         v13_shim = {
-            "verdict": full_card.pc_min.primary_verdict,
+            "verdict": full_card.pc_min.primary_verdict.value if hasattr(full_card.pc_min.primary_verdict, "value") else full_card.pc_min.primary_verdict,
             "evidence_grade": full_card.pc_min.evidence_grade.value if hasattr(full_card.pc_min.evidence_grade, "value") else full_card.pc_min.evidence_grade,
             "admission_verdict": full_card.pc_min.admission_verdict.value if hasattr(full_card.pc_min.admission_verdict, "value") else full_card.pc_min.admission_verdict,
             "privacy_check_verdict": full_card.pc_min.privacy_check_verdict.value if hasattr(full_card.pc_min.privacy_check_verdict, "value") else full_card.pc_min.privacy_check_verdict,
-            "episode_start": full_card.pc_min.episode_start,
             "episode_id": full_card.pc_min.episode_id,
+            "window_ref": full_card.pc_min.window_ref,
+            "gate_ref": full_card.pc_min.gate_ref,
             "data_range_start": full_card.pc_min.data_range_start,
             "data_range_end": full_card.pc_min.data_range_end,
         }
@@ -93,6 +106,10 @@ class OBHController:
         bundle["proof_card_v13"] = v13_shim
         
         path = self.exporter.export(out_dir, recognition.episode_id, bundle)
-        res = OBHResult(episode_id=recognition.episode_id, exported_path=path, bundle_content=bundle)
+        
+        # Safe serialize
+        safe_bundle = _safe_serialize(bundle)
+            
+        res = OBHResult(episode_id=recognition.episode_id, exported_path=path, bundle_content=safe_bundle)
         self.last_result = res
         return res

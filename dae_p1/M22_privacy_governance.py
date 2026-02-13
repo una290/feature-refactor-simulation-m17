@@ -101,12 +101,26 @@ class PrivacyGovernance:
         """
         import uuid
         
-        # 1. Generate Egress Receipt (Attempt-Bound)
-        # In a real system, we log this to an immutable ledger.
-        receipt_ref = f"EGRESS-{uuid.uuid4().hex[:8].upper()}"
-        pc_min.egress_receipt_ref = receipt_ref
+        # 1. Assign Gate Reference (The "Stamp")
+        # In a real system, this depends on the active Egress Policy.
+        # We use strict_mode to simulate different gates.
+        if self.strict_mode:
+            current_gate = "EG-STRICT-V2" 
+        else:
+            current_gate = "EG-DEFAULT-V1"
+            
+        pc_min.gate_ref = current_gate
         
-        # 2. Check Admissibility for Priv
+        # 2. Assign Policy Snapshot Ref (Propagate from Priv or Default)
+        if pc_priv and pc_priv.privacy_policy_ref:
+            # Construct a snapshot string (e.g., "POL-DEFAULT-V1.0")
+            pc_min.policy_snapshot_ref = f"{pc_priv.privacy_policy_ref.policy_id.upper()}-V{pc_priv.privacy_policy_ref.version}"
+        elif not pc_min.policy_snapshot_ref or pc_min.policy_snapshot_ref == "PP-V1.0":
+             # If it's still the default from M13, try to be more specific if possible, 
+             # otherwise keep the placeholder.
+             pass
+
+        # 3. Check Admissibility for Priv
         if not pc_priv:
             return pc_min, None
             

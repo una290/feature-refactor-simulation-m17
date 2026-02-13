@@ -354,12 +354,14 @@ class ProofCardGenerator:
 
         pc_min = ProofCardMin(
             episode_id=dummy_rec.episode_id,
-            episode_start=iso(dummy_rec.episode_start),
+            window_ref=window_ref_str,
             primary_verdict=eng_card.get("verdict", "UNKNOWN"), # Use Eng verdict
             admission_verdict=adm_verdict,
-            admission_effect=adm_effect,
             privacy_check_verdict=priv_verdict,
             evidence_grade=final_grade,
+            gate_ref="EG-DEFAULT-V1", # [TODO] In Phase 4, get this from M22.egress_gate
+            policy_snapshot_ref="PP-V1.0", # [TODO] In Phase 4, get this from M22 or SnapshotManager
+            admission_effect=adm_effect,
             byuse_context_ref=byuse_context_ref,
             data_range_start=min_ts_iso,
             data_range_end=max_ts_iso

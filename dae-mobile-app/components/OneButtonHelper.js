@@ -41,35 +41,118 @@ export default function OneButtonHelper({ onBack }) {
         });
     };
 
-    const ExpandableSection = ({ title, children, defaultExpanded = false }) => {
-        const [expanded, setExpanded] = useState(defaultExpanded);
+    // --- PC-MIN ACCORDION COMPONENTS ---
+
+    const PC_MIN_METADATA = {
+        // 1. Identity
+        episode_id: { label: "Episode ID", desc: "Unique diagnostic event ID", logic: "M00: Auto-generated GUID" },
+        window_ref: { label: "Window Ref", desc: "Time window slice ID", logic: "M01: Time-slotting logic" },
+        data_range_start: { label: "Data Start", desc: "Sampling start time", logic: "Agg: Min timestamp" },
+        data_range_end: { label: "Data End", desc: "Sampling end time", logic: "Agg: Max timestamp" },
+
+        // 2. Verdicts
+        primary_verdict: { label: "Primary Verdict", desc: "Main network health conclusion", logic: "M13: Profile Thresholds (P95/P50)" },
+        admission_verdict: { label: "Admission", desc: "Gate admission decision", logic: "M22: Strict Mode + Privacy Check" },
+        privacy_check_verdict: { label: "Privacy Check", desc: "Sensitive data detection", logic: "M22: PII/Context Analysis" },
+        evidence_grade: { label: "Evidence Grade", desc: "Data completeness level", logic: "M13: Missing metrics check" },
+    };
+
+    const StatusBadge = ({ label, status, fontScale }) => {
+        let color = '#757575';
+        let bg = '#eee';
+
+        const s = String(status).toUpperCase();
+        if (s === 'PASS' || s === 'PRIVATE' || s === 'READY') {
+            color = '#2e7d32'; bg = '#e8f5e9';
+        } else if (s === 'FAIL' || s === 'PUBLIC' || s === 'STOP') {
+            color = '#c62828'; bg = '#ffebee';
+        } else if (s === 'WARN' || s === 'REVIEW') {
+            color = '#ef6c00'; bg = '#fff3e0';
+        }
+
         return (
-            <View style={styles.sectionContainer}>
-                <TouchableOpacity style={styles.sectionHeader} onPress={() => setExpanded(!expanded)}>
-                    <Text style={styles.sectionTitle}>{title}</Text>
-                    <Text style={styles.sectionArrow}>{expanded ? '▼' : '▶'}</Text>
-                </TouchableOpacity>
-                {expanded && <View style={styles.sectionContent}>{children}</View>}
+            <View style={{ backgroundColor: bg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
+                <Text style={{ color: color, fontWeight: 'bold', fontSize: 12 * fontScale }}>{status}</Text>
             </View>
         );
     };
 
-    // Helper for Status Badge
-    const StatusBadge = ({ label, status }) => {
-        const isPass = status === 'PASS' || status === 'READY';
-        const color = isPass ? '#2e7d32' : '#c62828';
-        const bgColor = isPass ? '#e8f5e9' : '#ffebee';
+    const FieldItem = ({ label, value, fontScale }) => (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ fontSize: 13 * fontScale, color: '#546e7a', fontWeight: '500' }}>{label}</Text>
+            <Text style={{ fontSize: 13 * fontScale, color: '#263238', fontFamily: 'monospace', maxWidth: '60%', textAlign: 'right' }} numberOfLines={2}>
+                {String(value !== undefined && value !== null ? value : '-')}
+            </Text>
+        </View>
+    );
+
+    const FieldGroup = ({ title, fields, data, fontScale }) => {
+        const meta = PC_MIN_METADATA;
         return (
-            <View style={{ backgroundColor: bgColor, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, alignSelf: 'flex-start', borderWidth: 1, borderColor: color }}>
-                <Text style={{ color: color, fontWeight: 'bold', fontSize: 12 * fontScale }}>{label}: {status}</Text>
+            <View style={{ marginBottom: 16, backgroundColor: '#fdfdfd', padding: 12, borderRadius: 6, borderWidth: 1, borderColor: '#eceff1' }}>
+                <Text style={{ fontSize: 14 * fontScale, fontWeight: 'bold', color: '#37474f', marginBottom: 10, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: '#cfd8dc' }}>
+                    {title}
+                </Text>
+                {fields.map(key => {
+                    const m = meta[key] || {};
+                    return (
+                        <FieldItem
+                            key={key}
+                            label={m.label || key}
+                            value={data[key]}
+                            fontScale={fontScale}
+                        />
+                    );
+                })}
             </View>
         );
+    };
+
+    const ProofCardMinView = ({ minCard, fontScale }) => {
+        if (!minCard) return null;
+        return (
+            <View>
+                <Text style={[styles.sectionHeader, { marginLeft: 0, marginTop: 20 }]}>PC-MIN FULL DETAILS</Text>
+
+                <FieldGroup
+                    title="Identity & Context"
+                    fields={['episode_id', 'window_ref', 'data_range_start', 'data_range_end']}
+                    data={minCard}
+                    fontScale={fontScale}
+                />
+
+                <FieldGroup
+                    title="Verdicts"
+                    fields={['primary_verdict', 'admission_verdict', 'privacy_check_verdict', 'evidence_grade']}
+                    data={minCard}
+                    fontScale={fontScale}
+                />
+
+                <FieldGroup
+                    title="Governance Basis"
+                    fields={['gate_ref', 'policy_snapshot_ref', 'byuse_context_ref']}
+                    data={minCard}
+                    fontScale={fontScale}
+                />
+            </View>
+        );
+    };
+
+    const formatTimeNoLocale = (iso) => {
+        if (!iso) return '-';
+        const d = new Date(iso);
+        const pad = (n) => n < 10 ? '0' + n : n;
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     };
 
     const renderTabContent = (bundle) => {
         if (!bundle) return null;
 
-        const v13Card = bundle.proof_card_v13;
+        // Try to get pure PC-Min first (Proposal 2), else fallback to v13 (Proposal 1 Shim)
+        const pcMin = bundle.proof_card_min || bundle.proof_card_v13;
+        const v13Card = bundle.proof_card_v13; // Keep for legacy UI parts
+
+        if (!pcMin) return <Text>No ProofCard Data Found</Text>;
 
         // --- LEGACY FALLBACK ---
         if (!v13Card) {
@@ -84,16 +167,17 @@ export default function OneButtonHelper({ onBack }) {
         }
 
         // --- V1.3 DATA PREP ---
-        const isReady = v13Card.verdict === 'READY';
+        const isReady = v13Card.verdict === 'READY' || pcMin.primary_verdict === 'READY';
         const verdictColor = isReady ? '#2e7d32' : '#c62828';
-        const episodeStart = v13Card.episode_start ? new Date(v13Card.episode_start).toLocaleString() : 'N/A';
-        const grade = v13Card.evidence_grade || 'UNKNOWN';
-        const admission = v13Card.admission_verdict || '-';
+        const episodeStart = (pcMin.data_range_start || v13Card.episode_start) ? formatTimeNoLocale(pcMin.data_range_start || v13Card.episode_start) : 'N/A';
+        const grade = pcMin.evidence_grade || 'UNKNOWN';
+        const admission = pcMin.admission_verdict || '-';
+        const finalVerdict = pcMin.primary_verdict || v13Card.verdict;
 
         // Count health check failures
         const failedChecks = v13Card.health_checks ? v13Card.health_checks.filter(c => c.status !== 'PASS') : [];
         const passChecks = v13Card.health_checks ? v13Card.health_checks.filter(c => c.status === 'PASS') : [];
-        const privacyVerdict = v13Card.privacy_check_verdict || 'N/A';
+        const privacyVerdict = pcMin.privacy_check_verdict || 'N/A';
 
         // --- TAB 1: OVERVIEW ---
         if (activeTab === 'overview') {
@@ -103,12 +187,12 @@ export default function OneButtonHelper({ onBack }) {
                     <View style={[styles.card, { borderTopColor: verdictColor, borderTopWidth: 4 }]}>
                         <Text style={styles.cardTitle}>Certificate Status</Text>
                         <View style={{ alignItems: 'center', marginVertical: 15 }}>
-                            <Text style={styles.verdictText}>{v13Card.verdict}</Text>
+                            <Text style={styles.verdictText}>{finalVerdict}</Text>
                             <Text style={{ color: '#666', marginTop: 4, fontSize: 14 * fontScale }}>Episode: {episodeStart}</Text>
                             {/* [NEW] Data Range Display */}
-                            {v13Card.data_range_start && v13Card.data_range_end && (
+                            {pcMin.data_range_start && pcMin.data_range_end && (
                                 <Text style={{ color: '#555', marginTop: 2, fontSize: 12 * fontScale, fontStyle: 'italic' }}>
-                                    Data Range: {new Date(v13Card.data_range_start).toLocaleTimeString()} - {new Date(v13Card.data_range_end).toLocaleTimeString()}
+                                    Data Range: {formatTimeNoLocale(pcMin.data_range_start)} - {formatTimeNoLocale(pcMin.data_range_end)}
                                 </Text>
                             )}
                         </View>
@@ -144,10 +228,14 @@ export default function OneButtonHelper({ onBack }) {
 
                             <View style={{ marginTop: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <Text style={{ fontSize: 14 * fontScale }}>Privacy Check:</Text>
-                                <StatusBadge label="Verdict" status={privacyVerdict} />
+                                <StatusBadge label="Verdict" status={privacyVerdict} fontScale={fontScale} />
                             </View>
                         </View>
                     </View>
+
+                    {/* [NEW] PC-MIN ACCORDION VIEW (PROPOSAL 3) */}
+                    <ProofCardMinView minCard={pcMin} fontScale={fontScale} />
+
                 </View>
             );
         }
@@ -237,9 +325,9 @@ export default function OneButtonHelper({ onBack }) {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={styles.container} >
             {/* 1. STICKY HEADER with Font Controls */}
-            <View style={styles.header}>
+            < View style={styles.header} >
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <TouchableOpacity onPress={onBack} style={styles.backButton}>
                         <Text style={styles.backText}>← Back</Text>
@@ -248,7 +336,7 @@ export default function OneButtonHelper({ onBack }) {
                 </View>
 
                 {/* Font Size Controls */}
-                <View style={{ flexDirection: 'row', backgroundColor: '#f0f0f0', borderRadius: 8, padding: 2 }}>
+                <View style={{ flexDirection: 'row', backgroundColor: '#f0f0f0', borderRadius: 8, padding: 2 }} >
                     <TouchableOpacity onPress={() => handleFontChange(-0.1)} style={{ paddingHorizontal: 10, paddingVertical: 4 }}>
                         <Text style={{ fontSize: 14, fontWeight: 'bold' }}>A-</Text>
                     </TouchableOpacity>
@@ -256,69 +344,73 @@ export default function OneButtonHelper({ onBack }) {
                     <TouchableOpacity onPress={() => handleFontChange(0.1)} style={{ paddingHorizontal: 10, paddingVertical: 4 }}>
                         <Text style={{ fontSize: 18, fontWeight: 'bold' }}>A+</Text>
                     </TouchableOpacity>
-                </View>
-            </View>
+                </View >
+            </View >
 
-            {result ? (
-                <View style={{ flex: 1, backgroundColor: '#f4f6f8' }}>
-                    {/* Sticky Result Header */}
-                    <View style={styles.resultHeader}>
-                        <Text style={styles.pathText} numberOfLines={1}>{result.path}</Text>
-                    </View>
+            {
+                result && !result.error ? (
+                    <View style={{ flex: 1, backgroundColor: '#f4f6f8' }} >
+                        {/* Sticky Result Header */}
+                        < View style={styles.resultHeader} >
+                            <Text style={styles.pathText} numberOfLines={1}>{result.path}</Text>
+                        </View >
 
-                    {/* Tabs */}
-                    <View style={styles.tabBar}>
-                        {['Overview', 'Diagnostics', 'Raw Data'].map((tab) => {
-                            const key = tab.toLowerCase().split(' ')[0]; // overview, diagnostics, raw
-                            const isActive = activeTab === key;
-                            return (
-                                <TouchableOpacity
-                                    key={key}
-                                    style={[styles.tabItem, isActive && styles.tabItemActive]}
-                                    onPress={() => setActiveTab(key)}
-                                >
-                                    <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab}</Text>
-                                </TouchableOpacity>
-                            );
-                        })}
-                    </View>
+                        {/* Tabs */}
+                        < View style={styles.tabBar} >
+                            {
+                                ['Overview', 'Diagnostics', 'Raw Data'].map((tab) => {
+                                    const key = tab.toLowerCase().split(' ')[0]; // overview, diagnostics, raw
+                                    const isActive = activeTab === key;
+                                    return (
+                                        <TouchableOpacity
+                                            key={key}
+                                            style={[styles.tabItem, isActive && styles.tabItemActive]}
+                                            onPress={() => setActiveTab(key)}
+                                        >
+                                            <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab}</Text>
+                                        </TouchableOpacity>
+                                    );
+                                })
+                            }
+                        </View >
 
-                    {/* Content Area */}
-                    <ScrollView style={{ flex: 1 }}>
-                        {renderTabContent(result.bundle)}
-                    </ScrollView>
-                </View>
-            ) : (
-                // --- IDLE STATE ---
-                // Keeping original "Big Button" UI for the idle state
-                <View style={styles.content}>
-                    <Text style={styles.guide}>
-                        Experiencing an issue? Tap the button below to capture diagnostics and generate a support bundle instantly.
-                    </Text>
+                        {/* Content Area */}
+                        < ScrollView style={{ flex: 1 }
+                        }>
+                            {renderTabContent(result.bundle)}
+                        </ScrollView >
+                    </View >
+                ) : (
+                    // --- IDLE STATE ---
+                    // Keeping original "Big Button" UI for the idle state
+                    <View style={styles.content}>
+                        <Text style={styles.guide}>
+                            Experiencing an issue? Tap the button below to capture diagnostics and generate a support bundle instantly.
+                        </Text>
 
-                    <TouchableOpacity
-                        style={styles.bigButton}
-                        onPress={handlePress}
-                        disabled={loading}
-                    >
-                        {loading ? (
-                            <ActivityIndicator size="large" color="#FFF" />
-                        ) : (
-                            <Text style={styles.bigButtonText}>HELP</Text>
+                        <TouchableOpacity
+                            style={styles.bigButton}
+                            onPress={handlePress}
+                            disabled={loading}
+                        >
+                            {loading ? (
+                                <ActivityIndicator size="large" color="#FFF" />
+                            ) : (
+                                <Text style={styles.bigButtonText}>HELP</Text>
+                            )}
+                        </TouchableOpacity>
+
+                        <Text style={styles.subtext}>
+                            {loading ? "Capturing timeline & metrics..." : "Tap to capture 7-day history"}
+                        </Text>
+
+                        {/* Error display for IDLE state */}
+                        {result && result.error && (
+                            <Text style={styles.errorText}>Error: {result.error}</Text>
                         )}
-                    </TouchableOpacity>
-
-                    <Text style={styles.subtext}>
-                        {loading ? "Capturing timeline & metrics..." : "Tap to capture 7-day history"}
-                    </Text>
-
-                    {/* Error display for IDLE state */}
-                    {result && result.error && (
-                        <Text style={styles.errorText}>Error: {result.error}</Text>
-                    )}
-                </View>
-            )}
-        </View>
+                    </View>
+                )}
+        </View >
     );
 }
 

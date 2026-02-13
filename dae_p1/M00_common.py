@@ -111,14 +111,22 @@ class DisclosureScopeRef:
 @dataclass
 class ProofCardMin:
     """Minimized Proof Card: Safe for general handling."""
+    # --- 1. Identity ---
     episode_id: str
-    episode_start: str
+    window_ref: str             # [NEW] De-duplication & Time Context
+    
+    # --- 2. Verdict State ---
     primary_verdict: str
     admission_verdict: AdmissionVerdict
-    admission_effect: str
     privacy_check_verdict: PrivacyCheckVerdict
     evidence_grade: EvidenceGrade
-    egress_receipt_ref: Optional[str] = None
+    
+    # --- 3. Governance Basis ---
+    gate_ref: str               # [NEW] Egress Gate Standard (ex: EG-STRICT-01)
+    policy_snapshot_ref: str    # [NEW] Privacy Policy Version (ex: PP-V2.1)
+    
+    # --- 4. Context ---
+    admission_effect: str
     byuse_context_ref: Optional[str] = None
     data_range_start: Optional[str] = None
     data_range_end: Optional[str] = None
@@ -127,6 +135,7 @@ class ProofCardMin:
 class ProofCardPriv:
     """Privileged Proof Card: Contains sensitive refs/data."""
     # References to policies acting as the "authorization" for this data
+    # (policy_snapshot_ref is now in Min, but we keep objectionj refs here if needed)
     privacy_policy_ref: Optional[PrivacyPolicyRef] = None
     purpose_ref: Optional[PurposeRef] = None
     retention_ref: Optional[RetentionRef] = None
