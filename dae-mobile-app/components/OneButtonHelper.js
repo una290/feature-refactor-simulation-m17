@@ -5,7 +5,7 @@ import { triggerOBH } from '../src/api';
 export default function OneButtonHelper({ onBack }) {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
-    const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'diagnostics', 'raw'
+    const [activeTab, setActiveTab] = useState('pc-min'); // 'pc-min', 'pc-priv', 'raw'
 
     // Font Scale State (Default 1.1 for bigger font as requested)
     const [fontScale, setFontScale] = useState(1.1);
@@ -16,7 +16,7 @@ export default function OneButtonHelper({ onBack }) {
     const handlePress = async () => {
         setLoading(true);
         setResult(null);
-        setActiveTab('overview'); // Reset to first tab on new path
+        setActiveTab('pc-min'); // Reset to first tab on new path
 
         try {
             const data = await triggerOBH();
@@ -112,18 +112,11 @@ export default function OneButtonHelper({ onBack }) {
         if (!minCard) return null;
         return (
             <View>
-                <Text style={[styles.sectionHeader, { marginLeft: 0, marginTop: 20 }]}>PC-MIN FULL DETAILS</Text>
+                <Text style={[styles.sectionHeader, { marginLeft: 0, marginTop: 20 }]}>TECHNICAL METADATA</Text>
 
                 <FieldGroup
                     title="Identity & Context"
                     fields={['episode_id', 'window_ref', 'data_range_start', 'data_range_end']}
-                    data={minCard}
-                    fontScale={fontScale}
-                />
-
-                <FieldGroup
-                    title="Verdicts"
-                    fields={['primary_verdict', 'admission_verdict', 'privacy_check_verdict', 'evidence_grade']}
                     data={minCard}
                     fontScale={fontScale}
                 />
@@ -179,58 +172,113 @@ export default function OneButtonHelper({ onBack }) {
         const passChecks = v13Card.health_checks ? v13Card.health_checks.filter(c => c.status === 'PASS') : [];
         const privacyVerdict = pcMin.privacy_check_verdict || 'N/A';
 
-        // --- TAB 1: OVERVIEW ---
-        if (activeTab === 'overview') {
-            return (
-                <View style={styles.tabContent}>
-                    {/* PC-MIN Card */}
-                    <View style={[styles.card, { borderTopColor: verdictColor, borderTopWidth: 4 }]}>
-                        <Text style={styles.cardTitle}>Certificate Status</Text>
-                        <View style={{ alignItems: 'center', marginVertical: 15 }}>
-                            <Text style={styles.verdictText}>{finalVerdict}</Text>
-                            <Text style={{ color: '#666', marginTop: 4, fontSize: 14 * fontScale }}>Episode: {episodeStart}</Text>
-                            {/* [NEW] Data Range Display */}
-                            {pcMin.data_range_start && pcMin.data_range_end && (
-                                <Text style={{ color: '#555', marginTop: 2, fontSize: 12 * fontScale, fontStyle: 'italic' }}>
-                                    Data Range: {formatTimeNoLocale(pcMin.data_range_start)} - {formatTimeNoLocale(pcMin.data_range_end)}
-                                </Text>
-                            )}
-                        </View>
+        // --- HELPER: UNIFIED CARD COMPONENT (Updated Logic with Themes) ---
+        const UnifiedHealthCard = ({ title, status, details, subtext, fontScale, themeColor }) => {
+            const s = String(status).toUpperCase();
 
-                        <View style={styles.gridRow}>
-                            <View style={styles.gridItem}>
-                                <Text style={styles.gridLabel}>EVIDENCE GRADE</Text>
-                                <Text style={styles.gridValue}>{grade}</Text>
-                            </View>
-                            <View style={styles.gridDivider} />
-                            <View style={styles.gridItem}>
-                                <Text style={styles.gridLabel}>ADMISSION</Text>
-                                <Text style={styles.gridValue}>{admission}</Text>
-                            </View>
+            let color = '#757575';
+            let icon = '?';
+
+            // 1. Fail / Bad State (Always Red)
+            if (['FAIL', 'NOT_READY', 'DENY', 'STOP', 'PUBLIC', 'NOT_CLOSURE_GRADE', 'INSUFFICIENT_EVIDENCE'].includes(s)) {
+                color = '#c62828'; // Red
+                icon = '✗';
+            }
+            // 2. Override Theme Color (For Specific Zones)
+            else if (themeColor) {
+                color = themeColor;
+                icon = title === 'Data Range' ? '📅' : '✓';
+            }
+            // 3. Default Pass / Good State (Green)
+            else if (['PASS', 'ALL SYSTEMS GO', 'ADMIT', 'READY', 'PRIVATE', 'DELIVERY_GRADE', 'VALID', 'OK', '7DAYS', '7 DAYS'].includes(s)) {
+                color = '#2e7d32'; // Green
+                icon = '✓';
+            }
+            // 4. Info / Neutral State (Blue)
+            else {
+                color = '#0288d1'; // Blue
+                icon = 'ℹ';
+            }
+
+            return (
+                <View style={[styles.unifiedCard, { borderLeftColor: color }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.checkName}>{title}</Text>
+                            {subtext ? <Text style={{ color: color, fontSize: 12 * fontScale, marginTop: 4 }}>{subtext}</Text> : null}
                         </View>
+                        <Text style={{ color: color, fontWeight: 'bold', fontSize: 14 * fontScale }}>
+                            {icon} {status}
+                        </Text>
                     </View>
 
-                    {/* System Summary */}
-                    <View style={styles.card}>
-                        <Text style={styles.cardTitle}>System Summary</Text>
-                        <View style={{ marginTop: 10 }}>
-                            {failedChecks.length > 0 ? (
-                                <View style={[styles.alertBox, { backgroundColor: '#ffebee' }]}>
-                                    <Text style={{ fontWeight: 'bold', color: '#c62828', fontSize: 16 * fontScale }}>⚠ {failedChecks.length} Issues Found</Text>
-                                    <Text style={{ color: '#c62828', marginTop: 4, fontSize: 14 * fontScale }}>Check "Diagnostics" tab for details.</Text>
-                                </View>
-                            ) : (
-                                <View style={[styles.alertBox, { backgroundColor: '#e8f5e9' }]}>
-                                    <Text style={{ fontWeight: 'bold', color: '#2e7d32', fontSize: 16 * fontScale }}>✓ All Systems Go</Text>
-                                    <Text style={{ color: '#2e7d32', marginTop: 4, fontSize: 14 * fontScale }}>No health check failures detected.</Text>
-                                </View>
-                            )}
-
-                            <View style={{ marginTop: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <Text style={{ fontSize: 14 * fontScale }}>Privacy Check:</Text>
-                                <StatusBadge label="Verdict" status={privacyVerdict} fontScale={fontScale} />
-                            </View>
+                    {/* DETAILS SECTION */}
+                    {details && (
+                        <View style={styles.checkDetails}>
+                            <Text style={styles.monoText}>Threshold: {details.threshold}</Text>
+                            <Text style={[styles.monoText, { fontWeight: 'bold' }]}>Actual: {details.actual}</Text>
                         </View>
+                    )}
+
+                    {/* REASON CODE */}
+                    {details && details.reason_code && (
+                        <Text style={styles.reasonText}>Code: {details.reason_code}</Text>
+                    )}
+                </View>
+            );
+        };
+
+        // --- TAB 1: PC-MIN ---
+        if (activeTab === 'pc-min') {
+            return (
+                <View style={styles.tabContent}>
+
+                    {/* Unified Status Stack (Customized) */}
+                    <View style={{ marginTop: 5 }}>
+
+                        {/* 1. Health Check (Green) */}
+                        <UnifiedHealthCard
+                            title="Health Check"
+                            status={finalVerdict}
+                            subtext={failedChecks.length > 0 ? `${failedChecks.length} Issues Detected` : "All Checks Passed"}
+                            fontScale={fontScale}
+                        />
+
+                        {/* 2. Governance Zone (Blue) */}
+                        <UnifiedHealthCard
+                            title="Privacy Check"
+                            status={privacyVerdict}
+                            subtext={privacyVerdict === 'PASS' ? "No PII Detected" : "Review Required"}
+                            fontScale={fontScale}
+                            themeColor="#2196F3"
+                        />
+
+                        <UnifiedHealthCard
+                            title="Evidence Grade"
+                            status={grade}
+                            subtext="Data Integrity Level"
+                            fontScale={fontScale}
+                            themeColor="#2196F3"
+                        />
+
+                        <UnifiedHealthCard
+                            title="Network Admission"
+                            status={admission}
+                            subtext="Gate Control Decision"
+                            fontScale={fontScale}
+                            themeColor="#2196F3"
+                        />
+
+                        {/* 3. Data Range Zone (Orange) */}
+                        <UnifiedHealthCard
+                            title="Data Range"
+                            status={v13Card.validity_horizon_ref || "7 DAYS"}
+                            subtext={pcMin.data_range_start && pcMin.data_range_end ?
+                                `${formatTimeNoLocale(pcMin.data_range_start)} ... ${formatTimeNoLocale(pcMin.data_range_end).split(' ')[1]}` :
+                                "No Range Data"}
+                            fontScale={fontScale}
+                            themeColor="#ff9800"
+                        />
                     </View>
 
                     {/* [NEW] PC-MIN ACCORDION VIEW (PROPOSAL 3) */}
@@ -240,8 +288,8 @@ export default function OneButtonHelper({ onBack }) {
             );
         }
 
-        // --- TAB 2: DIAGNOSTICS ---
-        if (activeTab === 'diagnostics') {
+        // --- TAB 2: PC-PRIV ---
+        if (activeTab === 'pc-priv') {
             return (
                 <View style={styles.tabContent}>
                     {/* Privacy Section */}
@@ -261,35 +309,28 @@ export default function OneButtonHelper({ onBack }) {
                     </View>
 
                     {/* Health Checks */}
-                    <Text style={styles.sectionHeader}>HEALTH CHECKS ({v13Card.health_checks?.length || 0})</Text>
+                    <Text style={[styles.sectionHeader, { color: '#37474f', borderBottomColor: '#cfe8fc', borderBottomWidth: 2, paddingBottom: 4 }]}>Health Check Details ({v13Card.health_checks?.length || 0})</Text>
 
                     {/* Failed Checks First */}
                     {failedChecks.map((check, idx) => (
-                        <View key={`fail-${idx}`} style={[styles.checkRow, styles.checkFail]}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                <Text style={styles.checkName}>{check.name}</Text>
-                                <Text style={styles.checkStatusFail}>✗ {check.status}</Text>
-                            </View>
-                            <View style={styles.checkDetails}>
-                                <Text style={styles.monoText}>Threshold: {check.threshold}</Text>
-                                <Text style={[styles.monoText, { fontWeight: 'bold' }]}>Actual: {check.actual}</Text>
-                            </View>
-                            {check.reason_code && <Text style={styles.reasonText}>Code: {check.reason_code}</Text>}
-                        </View>
+                        <UnifiedHealthCard
+                            key={`fail-${idx}`}
+                            title={check.name}
+                            status={check.status} // FAIL
+                            details={check} // Pass full check object for details
+                            fontScale={fontScale}
+                        />
                     ))}
 
                     {/* API Checks */}
                     {passChecks.map((check, idx) => (
-                        <View key={`pass-${idx}`} style={[styles.checkRow, styles.checkPass]}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                <Text style={styles.checkName}>{check.name}</Text>
-                                <Text style={styles.checkStatusPass}>✓ {check.status}</Text>
-                            </View>
-                            <View style={styles.checkDetails}>
-                                <Text style={styles.monoText}>Threshold: {check.threshold}</Text>
-                                <Text style={styles.monoText}>Actual: {check.actual}</Text>
-                            </View>
-                        </View>
+                        <UnifiedHealthCard
+                            key={`pass-${idx}`}
+                            title={check.name}
+                            status={check.status} // PASS
+                            details={check}
+                            fontScale={fontScale}
+                        />
                     ))}
                 </View>
             );
@@ -358,8 +399,8 @@ export default function OneButtonHelper({ onBack }) {
                         {/* Tabs */}
                         < View style={styles.tabBar} >
                             {
-                                ['Overview', 'Diagnostics', 'Raw Data'].map((tab) => {
-                                    const key = tab.toLowerCase().split(' ')[0]; // overview, diagnostics, raw
+                                ['PC-min', 'PC-priv', 'Raw Data'].map((tab) => {
+                                    const key = tab.toLowerCase().split(' ')[0]; // pc-min, pc-priv, raw
                                     const isActive = activeTab === key;
                                     return (
                                         <TouchableOpacity
@@ -477,14 +518,26 @@ const getStyles = (s) => StyleSheet.create({
     gridLabel: { fontSize: 10 * s, color: '#78909c', marginBottom: 4, fontWeight: 'bold' },
     gridValue: { fontSize: 16 * s, fontWeight: 'bold', color: '#263238' },
 
-    // Alert Box
+    // Alert Box (Deprecated visually, now used for general alerts if needed)
     alertBox: { padding: 12, borderRadius: 6, marginBottom: 10 },
 
     // Diagnostics
-    sectionHeader: { fontSize: 12 * s, fontWeight: 'bold', color: '#78909c', marginBottom: 8, marginTop: 10, marginLeft: 4, letterSpacing: 1 },
-    checkRow: { padding: 10, borderRadius: 6, marginBottom: 8, borderWidth: 1 },
-    checkFail: { backgroundColor: '#ffebee', borderColor: '#ef9a9a' },
-    checkPass: { backgroundColor: '#fff', borderColor: '#e0e0e0' },
+    sectionHeader: { fontSize: 16 * s, fontWeight: 'bold', color: '#37474f', marginBottom: 12, marginTop: 15, letterSpacing: 0.5 },
+
+    // Unified Card Style (Left Stripe)
+    unifiedCard: {
+        backgroundColor: '#fff',
+        borderRadius: 6,
+        marginBottom: 8,
+        padding: 12,
+        borderLeftWidth: 5,
+        elevation: 1,
+        shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 },
+        borderWidth: 1, borderColor: '#eceff1', borderLeftColor: 'transparent' // will be overridden
+    },
+    ucPass: { borderLeftColor: '#2e7d32' },
+    ucFail: { borderLeftColor: '#c62828' },
+
     checkName: { fontSize: 14 * s, fontWeight: 'bold', color: '#37474f' },
     checkStatusPass: { color: '#2e7d32', fontWeight: 'bold', fontSize: 14 * s },
     checkStatusFail: { color: '#c62828', fontWeight: 'bold', fontSize: 14 * s },
@@ -502,7 +555,6 @@ const getStyles = (s) => StyleSheet.create({
 
     // Legacy support
     sectionContainer: { marginBottom: 8, backgroundColor: '#fafafa', borderRadius: 6, borderWidth: 1, borderColor: '#eee', overflow: 'hidden' },
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 10, backgroundColor: '#f1f1f1' },
     sectionTitle: { fontWeight: 'bold', fontSize: 14 * s, color: '#333' },
     sectionArrow: { fontSize: 14 * s, color: '#777' },
     sectionContent: { padding: 10 },
