@@ -370,7 +370,11 @@ class ProofCardGenerator:
         # 7. Construct PC-Priv
         pc_priv = ProofCardPriv(
              privacy_policy_ref=policy_refs.get("policy") if policy_refs else None,
+             purpose_ref=policy_refs.get("purpose") if policy_refs else None,
+             retention_ref=policy_refs.get("retention") if policy_refs else None,
              disclosure_scope_ref=policy_refs.get("disclosure") if policy_refs else None,
+             redaction_profile_ref=policy_refs.get("redaction") if policy_refs else None,
+             privacy_violation_flag=policy_refs.get("violation_flag", False) if policy_refs else False,
              frozen_timeline=frozen_data
         )
         

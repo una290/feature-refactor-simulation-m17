@@ -138,12 +138,22 @@ export default function OneButtonHelper({ onBack }) {
         return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     };
 
+    const PRIVACY_REFS_METADATA = {
+        privacy_policy_ref: { label: "Privacy Policy", key: "policy_id" },
+        purpose_ref: { label: "Purpose", key: "purpose_id" },
+        retention_ref: { label: "Retention", key: "policy_id", secondary: "days", unit: " days" },
+        disclosure_scope_ref: { label: "Disclosure Scope", key: "scope_id" },
+        redaction_profile_ref: { label: "Redaction Profile" },
+        privacy_violation_flag: { label: "Violation Flag" },
+    };
+
     const renderTabContent = (bundle) => {
         if (!bundle) return null;
 
         // Try to get pure PC-Min first (Proposal 2), else fallback to v13 (Proposal 1 Shim)
         const pcMin = bundle.proof_card_min || bundle.proof_card_v13;
         const v13Card = bundle.proof_card_v13; // Keep for legacy UI parts
+        const pcPriv = bundle.proof_card_priv;
 
         if (!pcMin) return <Text>No ProofCard Data Found</Text>;
 
@@ -332,6 +342,46 @@ export default function OneButtonHelper({ onBack }) {
                             fontScale={fontScale}
                         />
                     ))}
+
+                    {/* [NEW] Privacy References Card */}
+                    <Text style={[styles.sectionHeader, { marginTop: 20 }]}>PRIVACY REFERENCES (Refs)</Text>
+                    <View style={[styles.card, { padding: 0, overflow: 'hidden' }]}>
+                        {Object.keys(PRIVACY_REFS_METADATA).map((fieldKey, idx) => {
+                            const meta = PRIVACY_REFS_METADATA[fieldKey];
+                            const rawVal = pcPriv ? pcPriv[fieldKey] : null;
+
+                            let displayVal = '-';
+                            if (rawVal !== null && rawVal !== undefined) {
+                                if (typeof rawVal === 'object') {
+                                    displayVal = rawVal[meta.key] || '-';
+                                    if (meta.secondary && rawVal[meta.secondary]) {
+                                        displayVal += ` (${rawVal[meta.secondary]}${meta.unit || ''})`;
+                                    }
+                                } else if (typeof rawVal === 'boolean') {
+                                    displayVal = rawVal ? 'TRUE' : 'FALSE';
+                                } else {
+                                    displayVal = String(rawVal);
+                                }
+                            }
+
+                            return (
+                                <View
+                                    key={fieldKey}
+                                    style={{
+                                        flexDirection: 'row',
+                                        justifyContent: 'space-between',
+                                        padding: 12,
+                                        borderBottomWidth: idx === Object.keys(PRIVACY_REFS_METADATA).length - 1 ? 0 : 1,
+                                        borderBottomColor: '#f0f0f0',
+                                        backgroundColor: idx % 2 === 0 ? '#fff' : '#f9f9f9'
+                                    }}
+                                >
+                                    <Text style={{ fontSize: 13 * fontScale, color: '#546e7a', fontWeight: '500' }}>{meta.label}</Text>
+                                    <Text style={{ fontSize: 13 * fontScale, color: '#263238', fontFamily: 'monospace', fontWeight: 'bold' }}>{displayVal}</Text>
+                                </View>
+                            );
+                        })}
+                    </View>
                 </View>
             );
         }
