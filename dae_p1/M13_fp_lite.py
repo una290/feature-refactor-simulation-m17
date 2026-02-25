@@ -8,8 +8,7 @@ import uuid
 import json
 from dataclasses import asdict, dataclass
 from .M00_common import (
-    ReasonCode, ProofCard, ProofCardMin, ProofCardPriv, 
-    AdmissionVerdict, EvidenceGrade, PrivacyCheckVerdict,
+    ReasonCode, ProofCard,
     MetricSample, ChangeEventCard, PreChangeSnapshot, iso
 )
 from .M10_timeline_builder import TimelineBuilder
@@ -276,19 +275,7 @@ class ProofCardGenerator:
                  authority_scope_ref: Optional[str] = None,
                  byuse_context_ref: Optional[str] = None) -> ProofCard:
         
-        # --- 0. Setup & Recognition Mock (for Governance) ---
-        # Governance expects an EpisodeRecognition object or similar context.
-        # But M22 hooks (privacy_check) take 'EpisodeRecognition'.
-        # We need to construct a minimal one or refactor M22. 
-        # For now, we construct a transient one.
-        
-        # 1. Pipeline: Privacy Check
-        # We assume "observability" is sufficient if we have metrics.
-        # This is a simplification for Phase 3.
-        # passed, msg, policy_refs = self.governance.privacy_check(...) 
-        # We'll call privacy_check with a dummy attempt for now or skip if M22 allows.
-        # M22.privacy_check takes 'attempt'. Let's build a dummy attempt.
-        from .M00_common import ObservabilityResult, EpisodeRecognition, Verdict
+        from .M00_common import ObservabilityResult, EpisodeRecognition
         
         # Helper to ensure we have list of dicts for stats calc
         window_data = []
@@ -296,7 +283,7 @@ class ProofCardGenerator:
             if hasattr(m, '__dict__'): window_data.append(asdict(m))
             elif isinstance(m, dict): window_data.append(m)
             
-        # [NEW] Calculate Data Range
+        # Calculate Data Range
         min_ts = None
         max_ts = None
         if window_data:
@@ -318,67 +305,41 @@ class ProofCardGenerator:
             observability=ObservabilityResult("SUFFICIENT", False)
         )
         
-        passed, msg, policy_refs = self.governance.privacy_check(dummy_rec)
+        # 1. Pipeline: Base Validity Check (Hook 1)
+        is_valid, missing_classes, refs = self.governance.check_base_validity(dummy_rec)
         
-        # 2. Pipeline: BYUSE Qualify
-        # Determine the provisional grade
-        tmp_grade = EvidenceGrade.DELIVERY_GRADE
-        final_grade, upgrade_req = self.governance.byuse_qualify(byuse_context_ref, tmp_grade)
-        
-        # 3. Pipeline: Admission Decide
-        adm_verdict, adm_effect, final_grade = self.governance.admission_decide(passed, final_grade)
-        
-        # 4. Freeze First (Timeline Build)
-        # Ensure inputs are objects for TimelineBuilder (it expects objects)
-        # We might need to reconvert if we passed dicts. 
-        # Assuming for now inputs ARE objects if coming from Core.
+        # 2. Freeze First (Timeline Build)
         timeline = self.timeline_builder.build(metrics, events, snapshots)
         
-        # 5. Generate Engineering Stats (V1.3 Logic)
+        # 3. Generate Engineering Stats
         eng_card = self._generate_engineering_stats(window_data, profile_ref, window_ref_str, manifest_ref_str, events)
         
-        # Combine Timeline + Eng Stats into 'Frozen Data'
-        # This matches "Raw Data will be synchronized frozen in pc_priv"
-        frozen_data = {
+        primary_verdict = eng_card.get("verdict", "UNKNOWN")
+        if not is_valid:
+            primary_verdict = "NOT_READY"
+        
+        # Combine Timeline + Eng Stats into 'Frozen Data Payload'
+        payload = {
             "timeline": timeline,
             "engineering_proof": eng_card,
             "events_debug": [asdict(e) for e in events] if events else []
         }
         
-        # 6. Construct PC-Min
-        # Map boolean passed to Enum
-        try:
-             priv_verdict = PrivacyCheckVerdict.PASS if passed else PrivacyCheckVerdict.FAIL
-        except:
-             priv_verdict = "PASS" if passed else "FAIL"
-
-        pc_min = ProofCardMin(
+        # 4. Construct Single ProofCard
+        pc = ProofCard(
             episode_id=dummy_rec.episode_id,
             window_ref=window_ref_str,
-            primary_verdict=eng_card.get("verdict", "UNKNOWN"), # Use Eng verdict
-            admission_verdict=adm_verdict,
-            privacy_check_verdict=priv_verdict,
-            evidence_grade=final_grade,
-            gate_ref="EG-DEFAULT-V1", # [TODO] In Phase 4, get this from M22.egress_gate
-            policy_snapshot_ref="PP-V1.0", # [TODO] In Phase 4, get this from M22 or SnapshotManager
-            admission_effect=adm_effect,
+            primary_verdict=primary_verdict,
+            missing_evidence_class=missing_classes,
+            egress_receipt_ref=None,
             byuse_context_ref=byuse_context_ref,
             data_range_start=min_ts_iso,
-            data_range_end=max_ts_iso
+            data_range_end=max_ts_iso,
+            refs=refs,
+            payload=payload
         )
         
-        # 7. Construct PC-Priv
-        pc_priv = ProofCardPriv(
-             privacy_policy_ref=policy_refs.get("policy") if policy_refs else None,
-             purpose_ref=policy_refs.get("purpose") if policy_refs else None,
-             retention_ref=policy_refs.get("retention") if policy_refs else None,
-             disclosure_scope_ref=policy_refs.get("disclosure") if policy_refs else None,
-             redaction_profile_ref=policy_refs.get("redaction") if policy_refs else None,
-             privacy_violation_flag=policy_refs.get("violation_flag", False) if policy_refs else False,
-             frozen_timeline=frozen_data
-        )
-        
-        return ProofCard(pc_min=pc_min, pc_priv=pc_priv)
+        return pc
 
     def _generate_engineering_stats(self, window_data, profile_ref, window_ref_str, manifest_ref_str, events) -> Dict[str, Any]:
         """Legacy V1.3 Generation Logic (Internal)"""

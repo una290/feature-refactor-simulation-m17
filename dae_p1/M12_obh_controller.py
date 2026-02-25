@@ -1,11 +1,12 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, Any, Optional
-from .M00_common import EpisodeRecognition, iso, ProofCardMin, ProofCardPriv, AdmissionVerdict, EvidenceGrade, asdict
+from typing import Dict, Any, Optional, List
+from .M00_common import EpisodeRecognition, iso, ProofCard, asdict
 from .M10_timeline_builder import TimelineBuilder
 from .M11_bundle_exporter import BundleExporter
 from .M22_privacy_governance import PrivacyGovernance
+from .M23_audit_logger import AuditLogger
 from enum import Enum
 
 def _safe_serialize(obj):
@@ -35,6 +36,7 @@ class OBHController:
         self.last_result: Optional[OBHResult] = None
         # M12 controls the Egress, M13 controls internal hooks
         self.governance = PrivacyGovernance(strict_mode=False)
+        self.audit_logger = AuditLogger()
         
         # [NEW] Use ProofCardGenerator (M13)
         from .M13_fp_lite import ProofCardGenerator
@@ -45,8 +47,9 @@ class OBHController:
             byuse_context_ref: Optional[str] = None,
             authority_scope_ref: Optional[str] = None) -> OBHResult:
         
-        # 1. Generate Unified ProofCard (includes Hook 1-3 + Freeze)
-        # We pass the raw data objects to M13
+        from dataclasses import asdict
+        
+        # 1. Generate Unified ProofCard (Hook 1: Base Validity)
         full_card = self.pc_generator.generate(
             metrics=metrics,
             events=events,
@@ -57,56 +60,66 @@ class OBHController:
             byuse_context_ref=byuse_context_ref
         )
         
-        # 2. Pipeline: Egress Gate (Hook 4)
+        # 2. Pipeline: View Projector (Hook 2: Egress Filter)
         # Decide what actually leaves
-        final_min, final_priv = self.governance.egress_gate(
-            full_card.pc_min, full_card.pc_priv, authority_scope_ref
-        )
+        projected_card_dict = self.governance.project_view(full_card, authority_scope_ref)
         
-        # 3. Assemble Final Bundle Dict
+        # 3. Pipeline: BYUSE Validator (Hook 3: Compliance Check)
+        evidence_grade, upgrade_req = self.governance.evaluate_closure_grade(projected_card_dict, byuse_context_ref)
+        
+        # 4. Assemble Final Bundle Dict
         bundle = {
-            "spec": "DAE_P1_Priv_v2",
-            "proof_card_min": _safe_serialize(final_min),
-            "proof_card_priv": _safe_serialize(final_priv) if final_priv else None,
+            "spec": "DAE_P1_Priv_v2_CapabilityBased",
+            "proof_card": _safe_serialize(projected_card_dict),
+            "evidence_grade": evidence_grade,
+            "upgrade_requirements_ref": upgrade_req
         }
         
         # Extract/Embed Logic based on Privacy
-        # Extract/Embed Logic based on Privacy
-        # Base shim from PC-Min (Always Safe)
-        v13_shim = {
-            "verdict": full_card.pc_min.primary_verdict.value if hasattr(full_card.pc_min.primary_verdict, "value") else full_card.pc_min.primary_verdict,
-            "evidence_grade": full_card.pc_min.evidence_grade.value if hasattr(full_card.pc_min.evidence_grade, "value") else full_card.pc_min.evidence_grade,
-            "admission_verdict": full_card.pc_min.admission_verdict.value if hasattr(full_card.pc_min.admission_verdict, "value") else full_card.pc_min.admission_verdict,
-            "privacy_check_verdict": full_card.pc_min.privacy_check_verdict.value if hasattr(full_card.pc_min.privacy_check_verdict, "value") else full_card.pc_min.privacy_check_verdict,
-            "episode_id": full_card.pc_min.episode_id,
-            "window_ref": full_card.pc_min.window_ref,
-            "gate_ref": full_card.pc_min.gate_ref,
-            "data_range_start": full_card.pc_min.data_range_start,
-            "data_range_end": full_card.pc_min.data_range_end,
+        # Assembling PC-Min (Always Safe / External View)
+        pc_min = {
+            "verdict": projected_card_dict.get("primary_verdict"),
+            "evidence_grade": evidence_grade,
+            "episode_id": projected_card_dict.get("episode_id"),
+            "window_ref": projected_card_dict.get("window_ref"),
+            "data_range_start": projected_card_dict.get("data_range_start"),
+            "data_range_end": projected_card_dict.get("data_range_end"),
+            "missing_evidence_class": projected_card_dict.get("missing_evidence_class", []),
+            "upgrade_requirements_ref": upgrade_req,
+            "egress_receipt_ref": projected_card_dict.get("egress_receipt_ref")
         }
         
-
-
-        if final_priv:
-            # We have access to sensitive data
-            frozen = final_priv.frozen_timeline or {}
-            bundle["payload"] = {
-                "timeline": frozen.get("timeline"),
-                "engineering_proof": frozen.get("engineering_proof"),
+        payload = projected_card_dict.get("payload")
+        if payload:
+            # We have full view access, assemble PC-Priv
+            pc_priv = {
+                "timeline": payload.get("timeline"),
+                "engineering_proof": payload.get("engineering_proof"),
                 "observability": asdict(recognition.observability), 
                 "evidence_refs": recognition.evidence_refs
             }
-            # [INTEGRATION SUPPORT]
-            # Merge Engineering Proof into Shim
-            eng_proof = frozen.get("engineering_proof", {})
-            v13_shim.update(eng_proof)
+            # [INTEGRATION SUPPORT] Merge Engineering Proof into PC-Min if desired
+            # or keep it strictly separated. Let's merge for UI compatibility.
+            eng_proof = payload.get("engineering_proof", {})
+            pc_min.update(eng_proof)
         else:
-            bundle["payload"] = "REDACTED: PRE-ADMISSION or UNAUTHORIZED"
+            pc_priv = None
             
-        bundle["proof_card_v13"] = v13_shim
+        bundle["pc_min"] = pc_min
+        bundle["pc_priv"] = pc_priv
         
         path = self.exporter.export(out_dir, recognition.episode_id, bundle)
         
+        # [NEW] Audit Logging Persistence
+        self.audit_logger.log_egress(
+            episode_id=recognition.episode_id,
+            authority_scope_ref=authority_scope_ref,
+            egress_receipt_ref=projected_card_dict.get("egress_receipt_ref"),
+            policy_snapshot_ref=projected_card_dict.get("refs", {}).get("policy", {}).get("policy_id", "UNKNOWN"),
+            context_ref=byuse_context_ref,
+            evidence_grade=evidence_grade
+        )
+
         # Safe serialize
         safe_bundle = _safe_serialize(bundle)
             

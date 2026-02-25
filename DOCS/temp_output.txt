@@ -1,0 +1,424 @@
+2) BREL 程式需要怎麼改？（最小修改集 + 不破壞你既有「One Spine」）
+我用「BREL very lite → BREL full」都能吃的方式講：你不用重寫，只要在 BREL 的四個位置加“隱私鉤子（privacy hooks）”。
+改動點總覽（四個地方）
+Proof Card 生成（輸出面）：把 Proof Card 變成 PC-Min / PC-Priv 雙層
+Admission/Gate 判定（門控面）：隱私成為有效性前提（privacy as validity precondition）
+Egress/Export（外送面）：加一個 Minimal-Disclosure Egress Gate（最小揭露出口閘）
+BYUSE / 升級（效果面）：一旦被用於客服結案/監管/賠付，觸發 requiredness（不給就 not-closure-grade）
+A) Proof Card：新增 PC-Min / PC-Priv（不動你現有欄位，只做分層）
+你現在的 Proof Card 欄位（attempt_id/verdict/window_ref/reason_code/version refs…）都保留。
+新增做法：同一個 attempt_id 產生兩張卡（或一張卡兩個 section）：
+PC-Min（跨供應商、跨域通用，預設可外送）
+只保留必要可驗欄位，例如：
+attempt_id
+enforcement_path_id / gate_ref
+verdict（READY/NOT_READY/INSUFFICIENT…）
+window_ref（或 episode_ref）
+basis/version refs（policy_snapshot_ref、window_policy_id、translation_basis_id 如需）
+missing_evidence_class（若不夠）
+upgrade_requirements_ref（若 BYUSE 觸發要補件）
+PC-Priv（內部/受控，預設不可外送）
+新增 refs（不放 payload）：
+privacy_policy_ref（或 privacy_constraint_set_ref）
+purpose_ref（用途類別）
+retention_ref（保存策略類別）
+disclosure_scope_ref（可揭露範圍/粒度/欄位集合）
+redaction_profile_ref（輸出時用哪個遮罩模板）
+privacy_violation_flag（存在性旗標即可）
+這樣做的好處：四海皆準，因為你輸出的是「policy refs + verdict」，不是法律文本。
+B) Gate/Admission：加入 Privacy Validity Check（最小 1 個判斷，卻是最值錢的 moat）
+在 BREL 的 admission 判定流程裡，加一個不吃 payload 的 check：
+根據 profile_ref / domain_adapter_ref 判斷此 Attempt 是否屬於「可能涉及個資/可識別流」（open set）
+若是，則要求 privacy_policy_ref + disclosure_scope_ref + retention_ref 的存在且有效（versioned / not stale）
+不滿足 → verdict 直接 DEGRADE / DENY（由 policy 決定）
+同時把結果寫回 Proof Card：
+privacy_check_verdict: PASS/FAIL/INCONCLUSIVE
+missing_evidence_class: PRIVACY_POLICY_MISSING / SCOPE_UNBOUND / RETENTION_UNKNOWN …
+注意：你不是在做內容檢測（DLP），你是在做 承認條件（recognition constitution）。這點非常關鍵、也最能避免被說成 prior art。
+C) Egress：新增 Minimal-Disclosure Egress Gate（出口治理）
+BREL 很容易被誤解成「你們在收集資料」。要把這個疑慮一次打穿：加一個出口閘，所有對外輸出都要過它。
+Minimal-Disclosure Egress Gate 做三件事
+預設只允許 PC-Min 外送
+PC-Priv 外送必須具備：
+disclosure_scope_ref（定義能出哪些欄位/粒度）
+authority_scope_ref / delegation_ref（誰批准外送）
+產生 egress_receipt_ref（attempt-bound）寫回 Proof Card
+什麼被送出（在 scope_ref 裡描述）
+送給誰（recipient class）
+什麼原因（reason_code）
+什麼窗口（window_ref）
+這個 Egress Gate 一樣是四海皆準：因為每個產業都怕「資料外流/過度揭露」，只是不一定叫 GDPR。
+D) BYUSE：當被拿去“結案/賠付/監管/客服”才要求升級（partial reliance admissibility 的落地）
+BREL 程式新增一個簡單的 “reliance_context_ref”（或 BYUSE flag）入口：
+平時沒有 BYUSE：PC-Min 足夠 → delivery-grade
+一旦 BYUSE（例如 CSR/settlement/compliance 介面呼叫）：
+觸發 required hooks：可能要 window_policy_id、policy_snapshot_ref、authority_scope_ref、privacy refs…
+若缺 → 回傳 not-closure-grade / void-for-reliance + upgrade_requirements_ref
+禁止事後用 dashboard/RCA 文字補齊升級
+這樣 Rakuten 的用法就會非常順：
+日常營運：低摩擦、低揭露
+一進入爭議/監管/賠付：立刻升級要求（BYUSE 驅動）
+3) 你要改到哪個程度才算“完成”？（給工程團隊的驗收點）
+最小可交付（MVP）
+Proof Card 分層（PC-Min/PC-Priv）
+Gate 加 privacy validity check（存在性 + stale check）
+Egress Gate：PC-Min only + egress receipt
+完整版（適用 Open RAN 多方供應鏈）
+BYUSE 觸發 requiredness + upgrade_requirements_ref
+privacy incident mode（異常外送/政策漂移觸發 counterforce）
+authority/delegation 綁定（誰批准揭露）
+Proof Card JSON/Proto 的字段變更（含 PC-Min/PC-Priv schema）
+BREL pipeline 的新增模組與介面（privacy_check(), egress_gate(), byuse_qualify()）
+回傳碼/狀態機（READY/NOT_READY/INSUFFICIENT + PRIVACY_FAIL 的 mapping）
+用你現在的欄位風格（attempt_id/window_ref/reason_code/version_refs）對齊寫。
+(1) Proof Card：PC-Min / PC-Priv 字段變更（JSON + Proto）
+1.1 Proof Card v1.4（JSON，單卡雙區塊寫法）
+建議：同一張 ProofCard 內含 min 與 priv 區塊（priv 可選），避免兩張卡不同步；對外輸出時只輸出 min。
+{
+  "proof_card_ref": "ulid_or_uuid",
+  "attempt_id": "ulid_or_uuid",
+  "profile_ref": "PROFILE_WIFI7_MLO|PROFILE_OPENRAN_RIC|...",
+  "enforcement_path_id": "EP-OPENRAN-RIC-01",
+  "gate_ref": "GATE-RIC-ADMISSION-01",
+  "verdict": "READY|NOT_READY|INSUFFICIENT_EVIDENCE",
+  "evidence_grade": "DELIVERY_GRADE|PARTIAL_RELIANCE|NOT_CLOSURE_GRADE",
+  "window_ref": "W2@120s/step10s",
+  "reason_code": ["RC_POLICY_OK", "RC_PRIVACY_PASS"],
+  "version_refs": {
+    "policy_snapshot_ref": "POLICY@2026-02-02#17",
+    "window_policy_id": "WP@v3",
+    "mapping_config_id": "MC@v5",
+    "normalization_ref": "NR@v2",
+    "translation_basis_id": "TB@v9"
+  },
+  "missing_evidence_class": [],
+  "upgrade_requirements_ref": null,
+  "min": {
+    "admission_verdict": "ADMIT|DENY|DEGRADE",
+    "admission_effect": "NONE|SLOW_MODE|SCOPE_REDUCTION|EGRESS_MIN_ONLY|FREEZE_EGRESS",
+    "privacy_check_verdict": "PASS|FAIL|INCONCLUSIVE|NOT_APPLICABLE",
+    "egress_receipt_ref": "EGRESS-REC-ULID",
+    "byuse_context_ref": null
+  },
+  "priv": {
+    "privacy_policy_ref": "PRIV@v4",
+    "purpose_ref": "PURP.NETWORK_OPERATION|PURP.SUPPORT_CLOSURE|PURP.COMPLIANCE_DEFENSE",
+    "retention_ref": "RET.7D|RET.30D|RET.180D",
+    "disclosure_scope_ref": "SCOPE.MIN|SCOPE.OPERATOR_ONLY|SCOPE.AUDIT",
+    "redaction_profile_ref": "REDACT.MIN|REDACT.MED|REDACT.MAX",
+    "privacy_violation_flag": false,
+    "privacy_violation_reason_code": []
+  }
+}
+關鍵設計點（會讓你四海皆準）
+min 一律可跨供應商/跨域流通
+priv 永遠不必外送；要外送必須走 egress_gate()（下面會定義）
+evidence_grade 讓你直接落地「delivery / partial reliance / not closure-grade」三層
+1.2 Proto（給工程團隊用的 wire format 草案）
+非限制性：field name/ordering 不構成限制；這只是工程可用稿。
+syntax = "proto3";
+message VersionRefs {
+  string policy_snapshot_ref = 1;
+  string window_policy_id = 2;
+  string mapping_config_id = 3;
+  string normalization_ref = 4;
+  string translation_basis_id = 5;
+}
+enum Verdict {
+  VERDICT_UNSPEC = 0;
+  READY = 1;
+  NOT_READY = 2;
+  INSUFFICIENT_EVIDENCE = 3;
+}
+enum EvidenceGrade {
+  GRADE_UNSPEC = 0;
+  DELIVERY_GRADE = 1;
+  PARTIAL_RELIANCE = 2;
+  NOT_CLOSURE_GRADE = 3;
+}
+enum AdmissionVerdict { ADMIT=0; DENY=1; DEGRADE=2; }
+enum PrivacyCheckVerdict { PASS=0; FAIL=1; INCONCLUSIVE=2; NOT_APPLICABLE=3; }
+message ProofCardMin {
+  AdmissionVerdict admission_verdict = 1;
+  string admission_effect = 2; // open set string token
+  PrivacyCheckVerdict privacy_check_verdict = 3;
+  string egress_receipt_ref = 4;
+  string byuse_context_ref = 5; // optional
+}
+message ProofCardPriv {
+  string privacy_policy_ref = 1;
+  string purpose_ref = 2;
+  string retention_ref = 3;
+  string disclosure_scope_ref = 4;
+  string redaction_profile_ref = 5;
+  bool privacy_violation_flag = 6;
+  repeated string privacy_violation_reason_code = 7;
+}
+message ProofCard {
+  string proof_card_ref = 1;
+  string attempt_id = 2;
+  string profile_ref = 3;
+  string enforcement_path_id = 4;
+  string gate_ref = 5;
+  Verdict verdict = 6;
+  EvidenceGrade evidence_grade = 7;
+  string window_ref = 8;
+  repeated string reason_code = 9;
+  VersionRefs version_refs = 10;
+  repeated string missing_evidence_class = 11;
+  string upgrade_requirements_ref = 12;
+  ProofCardMin min = 13;
+  ProofCardPriv priv = 14; // optional in transport
+}
+(1) BREL pipeline：新增模組與介面（privacy_check / egress_gate / byuse_qualify）
+2.1 Pipeline 高層流程（不改你 One Spine）
+Attempt → Ticket/Admission → Gate consumption → ProofCard → Grade classification → (optional) Egress
+ingest_attempt()
+  -> load_profile(profile_ref)
+  -> privacy_check()
+  -> byuse_qualify()
+  -> admission_decide()     // READY/NOT_READY/INSUFFICIENT 的主決策仍在這裡
+  -> build_proof_card()
+  -> egress_gate()          // 對外輸出才走；否則只落地存儲
+  -> return(proof_card_ref, verdict, evidence_grade, egress_receipt_ref?)
+2.2 介面定義（Python-like pseudo, 你也可翻成 Go/Rust）
+class AttemptCtx:
+    attempt_id: str
+    profile_ref: str
+    enforcement_path_id: str
+    gate_ref: str
+    window_ref: str
+    version_refs: dict
+    proposed_egress: dict | None   # optional
+    byuse_context_ref: str | None  # optional
+class PrivacyResult:
+    verdict: str  # PASS|FAIL|INCONCLUSIVE|NOT_APPLICABLE
+    priv_refs: dict  # privacy_policy_ref/purpose_ref/retention_ref/disclosure_scope_ref/redaction_profile_ref
+    missing: list[str]  # missing_evidence_class additions
+    reason_code: list[str]
+    admission_override: str | None  # "DENY" or "DEGRADE" when privacy is validity precondition
+def privacy_check(ctx: AttemptCtx, cfg) -> PrivacyResult:
+    """
+    Does NOT inspect payload.
+    Only checks existence/validity/staleness of privacy governance refs
+    under profile policy.
+    """
+class ByuseResult:
+    is_triggered: bool
+    required_additions: list[str]          # required hooks when BYUSE
+    missing: list[str]                      # missing_evidence_class additions
+    upgrade_requirements_ref: str | None    # what to fetch to upgrade grade
+    evidence_grade_floor: str               # DELIVERY_GRADE / PARTIAL_RELIANCE / NOT_CLOSURE_GRADE
+    reason_code: list[str]
+def byuse_qualify(ctx: AttemptCtx, cfg) -> ByuseResult:
+    """
+    If ctx.byuse_context_ref is set, enforce triggered requiredness.
+    Outputs upgrade_requirements_ref when missing.
+    """
+class EgressResult:
+    allowed: bool
+    mode: str  # MIN_ONLY|PRIV_ALLOWED|DENY
+    egress_receipt_ref: str
+    disclosed_fields_ref: str   # optional pointer to what was disclosed (within scope)
+    reason_code: list[str]
+def egress_gate(ctx: AttemptCtx, proof_card: dict, cfg) -> EgressResult:
+    """
+    Default: export ProofCard.min only.
+    Export ProofCard.priv requires authority/delegation + disclosure_scope_ref.
+    Generates attempt-bound egress_receipt_ref and writes back to proof card.
+    """
+(1) 回傳碼 / 狀態機：READY / NOT_READY / INSUFFICIENT + PRIVACY_FAIL mapping
+3.1 你要的 mapping 表（工程可直接照做）
+主 Verdict（你的既有三態）
+PrivacyCheck
+BYUSE 觸發
+Evidence Grade（輸出層級）
+Admission（min.admission_verdict）
+missing_evidence_class / upgrade
+READY
+PASS/NA
+否
+DELIVERY_GRADE
+ADMIT
+無
+READY
+PASS/NA
+是
+PARTIAL_RELIANCE（或可升級）
+ADMIT
+若缺 required hooks → upgrade_requirements_ref
+NOT_READY
+PASS/NA
+任意
+NOT_CLOSURE_GRADE
+DEGRADE（常見）
+可含 RC_xxx
+INSUFFICIENT_EVIDENCE
+PASS/NA
+任意
+NOT_CLOSURE_GRADE
+DEGRADE
+missing_evidence_class = INSUFF_xxx
+任意
+FAIL
+任意
+NOT_CLOSURE_GRADE
+DENY 或 DEGRADE（由 policy）
+missing += PRIVACY_POLICY_MISSING / SCOPE_UNBOUND / RETENTION_UNKNOWN
+任意
+INCONCLUSIVE
+任意
+NOT_CLOSURE_GRADE（預設）
+DEGRADE
+missing += PRIVACY_UNKNOWN
+3.2 「PRIVACY_FAIL」怎麼表達才不破壞你三態
+你不需要新增第四個主 verdict。做法是：
+主 verdict 仍然只用三態
+min.privacy_check_verdict = FAIL
+min.admission_verdict = DENY 或 DEGRADE
+reason_code += RC_PRIVACY_FAIL
+missing_evidence_class += PRIVACY_*
+這樣完全符合你憲法：不靠故事、靠可驗 refs 與分類效果。
+(2) Demo 怎麼做？設定值怎麼設？（一個 15 分鐘 operator demo + 一個供應商 demo）
+你要的 Demo 目標其實是兩件事：
+我不看 payload，也能做 GDPR/隱私等級的治理承認
+只要 BYUSE（拿去結案/賠付/監管）就自動提高門檻，不允許事後升級
+我給你兩套 Demo：
+Demo A（Operator 15 分鐘）：Open RAN + Privacy + BYUSE 一次打穿
+場景
+Near-RT RIC 的 xApp 提議一個 policy 更新（例如 admission control / slice priority）
+這個更新「可能影響可識別資料流」（你不必講 payload，只講“user-affecting”即可）
+你要演 4 次 Attempt（同一 profile）
+Attempt #1：正常、隱私 refs 齊全 → READY / DELIVERY_GRADE
+Attempt #2：缺 privacy_policy_ref → NOT_READY 或 INSUFFICIENT + PRIVACY_FAIL → DENY/DEGRADE
+Attempt #3：隱私通過，但 CSR 要拿去關案（BYUSE=SUPPORT_CLOSURE） → PARTIAL_RELIANCE，缺窗/版本 refs 就卡住
+Attempt #4：補齊 upgrade_requirements_ref 指定的 refs → 允許升級到 PARTIAL_RELIANCE（仍不等於 settlement-grade）
+Demo 的“設定值”你怎麼設？
+用「可讀、非敏感」的策略參數（不是商業機密數字）：
+profile_policies:
+  PROFILE_OPENRAN_RIC:
+    privacy_applicability: "USER_AFFECTING"   # open set token
+    privacy_validity_precondition: true
+    on_privacy_fail: "DENY"                   # or DEGRADE
+    default_redaction_profile: "REDACT.MIN"
+    default_disclosure_scope: "SCOPE.MIN"
+    default_retention: "RET.7D"
+byuse_policies:
+  SUPPORT_CLOSURE:
+    required_refs:
+      - policy_snapshot_ref
+      - window_policy_id
+      - window_ref
+      - privacy_policy_ref
+      - disclosure_scope_ref
+    on_missing: "NOT_CLOSURE_GRADE"
+重點：不要展示任何 numeric threshold；只展示 required refs 與效果分類。
+Demo B（供應商 20 分鐘）：我只交 PC-Min，照樣能被 operator 接納
+場景
+Vendor A 的 xApp 只願意輸出最小資料
+Operator 需要跨供應商可驗的交付證據
+你要演 3 次輸出
+Vendor 只交 PC-Min：operator 系統仍可做 delivery-grade
+發生爭議，operator 觸發 BYUSE：系統回覆 upgrade_requirements_ref（列出要補的 refs），但仍不要求 payload
+Vendor 補交 privacy_policy_ref / disclosure_scope_ref / retention_ref（仍然是 refs）→ operator 允許 partial reliance
+設定值（Egress gate）
+egress_gate:
+  default_mode: "MIN_ONLY"
+  allow_priv_export_if:
+    requires:
+      - disclosure_scope_ref
+      - authority_scope_ref
+  always_emit_egress_receipt: true
+Demo 輸出你要準備哪些“可視化畫面”
+最少三個畫面就夠：
+Attempt Timeline（4 次 Attempt）：每次顯示 verdict、privacy_check、evidence_grade
+Proof Card Viewer：左邊顯示 PC-Min，右邊（需要權限）顯示 PC-Priv
+BYUSE 升級回覆：顯示 missing_evidence_class + upgrade_requirements_ref（一句話：No proof, no closure）
+你可以直接複製用的：10 次模擬測試用“測例表”（不含敏感值）
+（你說你要“模擬檢查十次”那種 demo 慣例，我這裡給你測例模板）
+Case
+privacy refs
+byuse
+egress request
+預期
+1
+齊全
+否
+無
+READY + DELIVERY_GRADE
+2
+缺 privacy_policy_ref
+否
+無
+NOT_CLOSURE_GRADE + privacy FAIL + DENY
+3
+齊全但 privacy_policy stale
+否
+無
+INSUFFICIENT + missing=PRIVACY_STALE
+4
+齊全
+SUPPORT_CLOSURE
+無
+PARTIAL_RELIANCE（或卡 upgrade）
+5
+齊全但缺 window_policy_id
+SUPPORT_CLOSURE
+無
+NOT_CLOSURE_GRADE + upgrade_requirements_ref
+6
+齊全+補齊
+SUPPORT_CLOSURE
+無
+PARTIAL_RELIANCE
+7
+齊全
+否
+要求 export priv
+DENY（缺 authority_scope_ref）
+8
+齊全+authority_scope_ref
+否
+export priv
+允許 + egress_receipt_ref
+9
+privacy 不適用 profile
+否
+無
+privacy_check=NOT_APPLICABLE
+10
+policy drift（版本跳）
+任意
+無
+DEGRADE + reason=POLICY_DRIFT
+如果你下一步要我把 demo 變成「可跑的腳本＋輸出 10 張 ProofCard JSON」（你之前 V1.3 那種節奏），我也可以直接給你一個最小 CLI 模擬器規格（或 Python/Go 假資料產生器），輸出：
+proof_cards/*.json
+egress_receipts/*.json
+一個 summary.csv 讓你貼到簡報上。
+GO
+已完成：我做了一個可直接拿去 Demo 的最小 BREL 隱私版模擬器輸出包（10 次 Attempt、10 張 Proof Card、2 張 egress receipt、1 份 summary.csv）。
+Download demo zip
+Download summary.csv
+資料夾內容：
+proof_cards/：10 張 ProofCard JSON（v1.4，含 min 與可選 priv）
+egress_receipts/：2 份出口閘回執（Case07/Case08）
+summary.csv：一行一 case（投影片最方便）
+Demo 怎麼演（你要的「設定值」也在這）
+你照這個順序走，15–20 分鐘就能把 operator 打穿：
+設定值（你只要講“類別”，不要講數字）
+把這段當成你 Demo 的口頭設定（或簡報一頁）：
+privacy_validity_precondition = true
+default_export_mode = PC-Min only
+BYUSE(SUPPORT_CLOSURE) => triggered requiredness
+no silent upgrade
+你要按順序展示的 4 個核心畫面
+summary.csv（先讓對方看到 10 次結果）
+打開 Case01 的 ProofCard：READY + DELIVERY_GRADE
+打開 Case02：PRIVACY_FAIL → NOT_READY / NOT_CLOSURE_GRADE（不看 payload）
+打開 Case05：BYUSE 觸發 → 缺 WINDOW_POLICY → INSUFFICIENT + upgrade_requirements_ref
+打開 Case07/08：egress_gate：沒授權就 DENY，有授權才允許 priv export + receipt
+你 Demo 時的「一句話話術」
+隱私：“We don’t inspect payload. We enforce privacy as a validity precondition using policy refs.”
+BYUSE：“The moment you rely on it for closure, the bar rises automatically. Missing refs ⇒ not-closure-grade.”
+出口：“Default export is PC-Min only. Priv export requires authority + scope and emits an egress receipt.”
+APPENDIX

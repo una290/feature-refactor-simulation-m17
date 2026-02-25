@@ -73,22 +73,6 @@ class ReasonCode:
     PASSED_ALL_CHECKS = "PASSED_ALL_CHECKS"
 
 
-class EvidenceGrade(str, Enum):
-    DELIVERY_GRADE = "DELIVERY_GRADE"       # 完整證據，可結案
-    PARTIAL_RELIANCE = "PARTIAL_RELIANCE"   # 受限引用，證據力不足
-    NOT_CLOSURE_GRADE = "NOT_CLOSURE_GRADE" # 隱私缺失，不可結案
-
-class AdmissionVerdict(str, Enum):
-    ADMIT = "ADMIT"     # 正常進入
-    DENY = "DENY"       # 拒絕進入
-    DEGRADE = "DEGRADE" # 降級進入 (剝離敏感資料)
-
-class PrivacyCheckVerdict(str, Enum):
-    PASS = "PASS"
-    FAIL = "FAIL"
-    INCONCLUSIVE = "INCONCLUSIVE"
-    NOT_APPLICABLE = "NOT_APPLICABLE"
-
 @dataclass
 class PrivacyPolicyRef:
     policy_id: str
@@ -109,48 +93,29 @@ class DisclosureScopeRef:
     scope_id: str    # e.g., "internal_engineering", "isp_support"
 
 @dataclass
-class ProofCardMin:
-    """Minimized Proof Card: Safe for general handling."""
-    # --- 1. Identity ---
+class ProofCard:
+    """Unified ProofCard (Capability-Based One Spine)"""
+    # --- 1. Identity & Context ---
     episode_id: str
-    window_ref: str             # [NEW] De-duplication & Time Context
+    window_ref: str
     
     # --- 2. Verdict State ---
     primary_verdict: str
-    admission_verdict: AdmissionVerdict
-    privacy_check_verdict: PrivacyCheckVerdict
-    evidence_grade: EvidenceGrade
     
     # --- 3. Governance Basis ---
-    gate_ref: str               # [NEW] Egress Gate Standard (ex: EG-STRICT-01)
-    policy_snapshot_ref: str    # [NEW] Privacy Policy Version (ex: PP-V2.1)
+    missing_evidence_class: List[str] = field(default_factory=list)
+    egress_receipt_ref: Optional[str] = None
     
     # --- 4. Context ---
-    admission_effect: str
     byuse_context_ref: Optional[str] = None
     data_range_start: Optional[str] = None
     data_range_end: Optional[str] = None
     
-@dataclass
-class ProofCardPriv:
-    """Privileged Proof Card: Contains sensitive refs/data."""
-    # References to policies acting as the "authorization" for this data
-    # (policy_snapshot_ref is now in Min, but we keep objectionj refs here if needed)
-    privacy_policy_ref: Optional[PrivacyPolicyRef] = None
-    purpose_ref: Optional[PurposeRef] = None
-    retention_ref: Optional[RetentionRef] = None
-    disclosure_scope_ref: Optional[DisclosureScopeRef] = None
-    redaction_profile_ref: Optional[str] = None
-    privacy_violation_flag: bool = False
-    privacy_violation_reason_code: List[str] = field(default_factory=list)
-    # [NEW] Phase 2: Frozen Data
-    frozen_timeline: Optional[Dict[str, Any]] = None
-
-@dataclass
-class ProofCard:
-    """Unified ProofCard (One Spine)"""
-    pc_min: ProofCardMin
-    pc_priv: ProofCardPriv
+    # --- 5. Privacy & Authorization Refs ---
+    refs: Dict[str, Any] = field(default_factory=dict)
+    
+    # --- 6. Frozen Data Payload (Sensitive) ---
+    payload: Optional[Dict[str, Any]] = None
 
     
 
