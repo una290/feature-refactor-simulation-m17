@@ -475,7 +475,7 @@ def simulate_incident(type: str = "latency", duration: int = 30):
     return {"status": "Simulating", "type": type, "duration": duration, "mode": "M17_Integrated"}
 
 @app.post("/obh/trigger")
-def trigger_obh():
+def trigger_obh(context: str = None):
     """
     Trigger One-Button Help export manually.
     """
@@ -488,7 +488,7 @@ def trigger_obh():
         os.makedirs("bundles", exist_ok=True)
         # Pass authority_scope_ref="isp-support" to simulate an authorized engineer
         # This ensures the ProofCard V1.3 is visible in the frontend app.
-        res = core.obh_export("bundles", authority_scope_ref="isp-support")
+        res = core.obh_export("bundles", authority_scope_ref="isp-support", byuse_context_ref=context)
         return {
             "status": "Exported",
             "episode_id": res.episode_id,

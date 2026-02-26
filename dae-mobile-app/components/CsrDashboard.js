@@ -1,0 +1,396 @@
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import { triggerOBH } from '../src/api';
+
+export default function CsrDashboard({ onBack }) {
+    const [loading, setLoading] = useState(false);
+    const [result, setResult] = useState(null);
+    const [activeTab, setActiveTab] = useState('pc-min'); // 'pc-min', 'pc-priv', 'raw'
+    const [reportContext, setReportContext] = useState('default'); // 'default', 'dispute'
+    const [fontScale, setFontScale] = useState(1.0);
+
+    const styles = useMemo(() => getStyles(fontScale), [fontScale]);
+
+    const handlePress = async (context = reportContext) => {
+        setLoading(true);
+        setActiveTab('pc-min');
+
+        try {
+            const apiContext = context === 'default' ? null : context;
+            const data = await triggerOBH(apiContext);
+            if (!data) throw new Error("Failed to contact server.");
+            setResult(data);
+        } catch (err) {
+            console.error(err);
+            setResult({ error: "Connection Failed. Check IP Settings." });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleContextChange = (newContext) => {
+        setReportContext(newContext);
+        if (result && !result.error) {
+            handlePress(newContext);
+        }
+    };
+
+    const handleFontChange = (delta) => {
+        setFontScale(prev => Math.min(Math.max(prev + delta, 0.8), 1.6));
+    };
+
+    const formatTimeNoLocale = (iso) => {
+        if (!iso) return '-';
+        const d = new Date(iso);
+        const pad = (n) => n < 10 ? '0' + n : n;
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    };
+
+    const UnifiedHealthCard = ({ title, status, details, subtext, fontScale, themeColor }) => {
+        const s = String(status).toUpperCase();
+        let color = '#757575', icon = '?';
+
+        if (['FAIL', 'NOT_READY', 'DENY', 'STOP', 'PUBLIC', 'NOT_CLOSURE_GRADE', 'INSUFFICIENT_EVIDENCE'].includes(s)) {
+            color = '#c62828'; icon = '✗';
+        } else if (themeColor) {
+            color = themeColor;
+            icon = title === 'Data Range' ? '📅' : '✓';
+        } else if (['PASS', 'ALL SYSTEMS GO', 'ADMIT', 'READY', 'PRIVATE', 'DELIVERY_GRADE', 'VALID', 'OK'].includes(s)) {
+            color = '#2e7d32'; icon = '✓';
+        } else {
+            color = '#0288d1'; icon = 'ℹ';
+        }
+
+        return (
+            <View style={[styles.unifiedCard, { borderLeftColor: color }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.checkName}>{title}</Text>
+                        {subtext ? <Text style={{ color: color, fontSize: 12 * fontScale, marginTop: 4 }}>{subtext}</Text> : null}
+                    </View>
+                    <Text style={{ color: color, fontWeight: 'bold', fontSize: 14 * fontScale }}>{icon} {status}</Text>
+                </View>
+                {details && details.reason_code && (
+                    <Text style={styles.reasonText}>Code: {details.reason_code}</Text>
+                )}
+            </View>
+        );
+    };
+
+    const renderTabContent = (bundle) => {
+        if (!bundle) return null;
+
+        const pcMin = bundle.pc_min;
+        const pcPriv = bundle.pc_priv;
+
+        if (!pcMin) return <Text style={{ padding: 20 }}>No ProofCard Data Found</Text>;
+
+        const isReady = pcMin.verdict === 'READY';
+        const finalVerdict = pcMin.verdict || 'UNKNOWN';
+        const grade = pcMin.evidence_grade || 'UNKNOWN';
+
+        const hasPrivacyMissing = pcMin.missing_evidence_class && pcMin.missing_evidence_class.length > 0;
+        const privacyVerdict = hasPrivacyMissing ? 'FAIL' : 'PASS';
+        const privacySubtext = hasPrivacyMissing ? pcMin.missing_evidence_class.join(", ") : "All Privacy Requirements Met";
+
+        if (activeTab === 'pc-min') {
+            return (
+                <View style={styles.tabContent}>
+                    {/* [NEW] COMPLIANCE WIZARD BLOCKER CARD */}
+                    {grade === 'NOT_CLOSURE_GRADE' && (
+                        <View style={styles.blockerCard}>
+                            <Text style={styles.blockerTitle}>🛑 Cannot Close Ticket (NOT_CLOSURE_GRADE)</Text>
+                            <Text style={styles.blockerText}>This diagnostic data is being used for "{reportContext}".</Text>
+                            <Text style={styles.blockerText}>The current evidence lacks required permissions for this use case.</Text>
+                            <View style={styles.blockerActionBox}>
+                                <Text style={styles.blockerActionLabel}>Required to Proceed:</Text>
+                                <Text style={styles.blockerActionReq}>📝 {pcMin.upgrade_requirements_ref}</Text>
+                                <TouchableOpacity style={styles.blockerBtn}>
+                                    <Text style={styles.blockerBtnText}>👉 Send Authorization Request to User</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    )}
+
+                    <View style={{ marginTop: 5 }}>
+                        <UnifiedHealthCard
+                            title="Network Diagnosis"
+                            status={finalVerdict}
+                            subtext={isReady ? "Connection is stable" : "Issues detected"}
+                            fontScale={fontScale}
+                        />
+
+                        <UnifiedHealthCard
+                            title="Primary Privacy Check"
+                            status={privacyVerdict}
+                            subtext={privacySubtext}
+                            fontScale={fontScale}
+                            themeColor={hasPrivacyMissing ? '#c62828' : '#2196F3'}
+                        />
+
+                        <UnifiedHealthCard
+                            title="Evidence Grade"
+                            status={grade}
+                            subtext={`For Context: ${reportContext}`}
+                            fontScale={fontScale}
+                            themeColor="#2196F3"
+                        />
+
+                        <UnifiedHealthCard
+                            title="Data Range"
+                            status="Timeline"
+                            subtext={pcMin.data_range_start && pcMin.data_range_end ?
+                                `${formatTimeNoLocale(pcMin.data_range_start)} ... ${formatTimeNoLocale(pcMin.data_range_end).split(' ')[1]}` :
+                                "No Range Data"}
+                            fontScale={fontScale}
+                            themeColor="#ff9800"
+                        />
+                    </View>
+
+                    <Text style={[styles.sectionHeader, { marginTop: 20 }]}>TECHNICAL METADATA (Public)</Text>
+                    <View style={styles.metadataCard}>
+                        <View style={styles.fieldRow}><Text style={styles.fieldLab}>Episode ID</Text><Text style={styles.fieldVal}>{pcMin.episode_id}</Text></View>
+                        <View style={styles.fieldRow}><Text style={styles.fieldLab}>Window Ref</Text><Text style={styles.fieldVal}>{pcMin.window_ref}</Text></View>
+                        <View style={styles.fieldRow}><Text style={styles.fieldLab}>Receipt Ref</Text><Text style={styles.fieldVal}>{pcMin.egress_receipt_ref || 'None'}</Text></View>
+                    </View>
+                </View>
+            );
+        }
+
+        if (activeTab === 'pc-priv' || activeTab === 'raw') {
+            if (!pcPriv) {
+                return (
+                    <View style={styles.tabContent}>
+                        <View style={styles.unauthCard}>
+                            <Text style={styles.unauthTitle}>⛔ Privacy Redaction Enabled</Text>
+                            <Text style={styles.unauthText}>You do not have the required authority scope to view the sensitive payload data for this ProofCard.</Text>
+                            <Text style={styles.unauthText}>Only PC-Min metadata is available.</Text>
+                        </View>
+                    </View>
+                );
+            }
+
+            if (activeTab === 'pc-priv') {
+                return (
+                    <View style={styles.tabContent}>
+                        <Text style={styles.sectionHeader}>PRIVACY REFERENCES (Internal Refs)</Text>
+                        <View style={styles.metadataCard}>
+                            {bundle.pc_priv.evidence_refs && bundle.pc_priv.evidence_refs.map((ref, idx) => (
+                                <Text key={idx} style={styles.monoText}>• {ref}</Text>
+                            ))}
+                            {(!bundle.pc_priv.evidence_refs || bundle.pc_priv.evidence_refs.length === 0) && (
+                                <Text style={styles.monoText}>No internal refs found.</Text>
+                            )}
+                        </View>
+
+                        <Text style={styles.sectionHeader}>OBSERVABILITY</Text>
+                        <View style={styles.metadataCard}>
+                            <View style={styles.fieldRow}><Text style={styles.fieldLab}>Status</Text><Text style={styles.fieldVal}>{pcPriv.observability?.status}</Text></View>
+                            <View style={styles.fieldRow}><Text style={styles.fieldLab}>Degraded</Text><Text style={styles.fieldVal}>{pcPriv.observability?.is_degraded ? 'Yes' : 'No'}</Text></View>
+                        </View>
+                    </View>
+                );
+            }
+
+            if (activeTab === 'raw') {
+                const fullJsonStr = JSON.stringify(pcPriv, null, 2);
+                const isMassive = fullJsonStr.length > 3000;
+
+                return (
+                    <View style={styles.tabContent}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                            <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>FROZEN PAYLOAD</Text>
+                            {pcMin.egress_receipt_ref && (
+                                <View style={styles.receiptBadge}><Text style={styles.receiptText}>👁️ Receipt: {pcMin.egress_receipt_ref.split('-')[2]}</Text></View>
+                            )}
+                        </View>
+                        <Text style={{ fontSize: 12 * fontScale, color: '#ff9800', marginBottom: 5 }}>
+                            ⚠️ Raw payload includes heavy timeline data.
+                        </Text>
+                        <View style={styles.jsonContainer}>
+                            <ScrollView nestedScrollEnabled={true}>
+                                <Text style={styles.jsonText}>
+                                    {isMassive && !result.showFullJson
+                                        ? fullJsonStr.substring(0, 3000) + '\n\n... [TRUNCATED FOR UI PERFORMANCE] ...\n'
+                                        : fullJsonStr}
+                                </Text>
+                                {isMassive && !result.showFullJson && (
+                                    <TouchableOpacity
+                                        style={{ padding: 10, backgroundColor: 'rgba(255,255,255,0.1)', marginTop: 10, borderRadius: 5, alignItems: 'center' }}
+                                        onPress={() => setResult({ ...result, showFullJson: true })}
+                                    >
+                                        <Text style={{ color: '#81c784', fontWeight: 'bold' }}>Load Full JSON (May lag for a few seconds)</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </ScrollView>
+                        </View>
+                    </View>
+                );
+            }
+        }
+    };
+
+    return (
+        <View style={styles.container}>
+            <View style={styles.header}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TouchableOpacity onPress={onBack} style={styles.backButton}>
+                        <Text style={styles.backText}>← Back</Text>
+                    </TouchableOpacity>
+                    <View>
+                        <Text style={styles.title}>CSR App Console</Text>
+                        <Text style={styles.subtitle}>Telco Agent Access View</Text>
+                    </View>
+                </View>
+                <View style={{ flexDirection: 'row', backgroundColor: '#333', borderRadius: 8, padding: 2 }}>
+                    <TouchableOpacity onPress={() => handleFontChange(-0.1)} style={{ paddingHorizontal: 10, paddingVertical: 4 }}>
+                        <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#fff' }}>A-</Text>
+                    </TouchableOpacity>
+                    <View style={{ width: 1, backgroundColor: '#555', marginVertical: 4 }} />
+                    <TouchableOpacity onPress={() => handleFontChange(0.1)} style={{ paddingHorizontal: 10, paddingVertical: 4 }}>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#fff' }}>A+</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            {result && !result.error ? (
+                <View style={{ flex: 1, backgroundColor: '#f4f6f8' }}>
+
+                    {/* Context Selector Workflow */}
+                    <View style={styles.contextBar}>
+                        <Text style={styles.contextLabel}>Report Context (BYUSE):</Text>
+                        <View style={styles.contextBtns}>
+                            <TouchableOpacity
+                                style={[styles.ctxBtn, reportContext === 'default' && styles.ctxBtnActive]}
+                                onPress={() => handleContextChange('default')}
+                                disabled={loading}
+                            >
+                                <Text style={[styles.ctxBtnTxt, reportContext === 'default' && styles.ctxBtnTxtActive]}>Routine Check</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.ctxBtn, reportContext === 'dispute' && styles.ctxBtnActive, { borderLeftWidth: 1, borderColor: '#ccc' }]}
+                                onPress={() => handleContextChange('dispute')}
+                                disabled={loading}
+                            >
+                                <Text style={[styles.ctxBtnTxt, reportContext === 'dispute' && styles.ctxBtnTxtActive]}>Dispute/Closure</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    <View style={styles.tabBar}>
+                        {['PC-Min (Overview)', 'PC-Priv (Details)', 'Raw Data'].map((tab) => {
+                            const key = tab.toLowerCase().split(' ')[0]; // pc-min, pc-priv, raw
+                            const isActive = activeTab === key;
+                            return (
+                                <TouchableOpacity key={key} style={[styles.tabItem, isActive && styles.tabItemActive]} onPress={() => setActiveTab(key)}>
+                                    <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab.split(' ')[0]}</Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+
+                    {loading ? (
+                        <ActivityIndicator size="large" color="#2196F3" style={{ marginTop: 50 }} />
+                    ) : (
+                        <ScrollView style={{ flex: 1 }}>
+                            {renderTabContent(result.bundle)}
+                        </ScrollView>
+                    )}
+                </View>
+            ) : (
+                <View style={styles.content}>
+                    <Text style={styles.guide}>
+                        Assume the identity of a Customer Support Representative resolving an issue with a customer's device.
+                    </Text>
+
+                    <View style={styles.idleContextContainer}>
+                        <TouchableOpacity
+                            style={styles.idleContextBtn}
+                            onPress={() => { setReportContext('default'); handlePress('default'); }}
+                            disabled={loading}
+                        >
+                            <Text style={styles.idleContextBtnTitle}>Perform Routine Check</Text>
+                            <Text style={styles.idleContextBtnDesc}>Standard diagnostics with default privacy</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.idleContextBtn, { marginTop: 15 }]}
+                            onPress={() => { setReportContext('dispute'); handlePress('dispute'); }}
+                            disabled={loading}
+                        >
+                            <Text style={styles.idleContextBtnTitle}>Escalate to Dispute/Closure</Text>
+                            <Text style={styles.idleContextBtnDesc}>Strict mode requiring signed manifest for legal cases</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {loading && <ActivityIndicator size="large" color="#1565c0" style={{ marginTop: 30 }} />}
+                    {result && result.error && <Text style={styles.errorText}>Error: {result.error}</Text>}
+                </View>
+            )}
+        </View>
+    );
+}
+
+const getStyles = (s) => StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#1e1e1e' },
+    header: { padding: 20, borderBottomWidth: 1, borderBottomColor: '#333', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1e1e1e' },
+    backButton: { marginRight: 15 },
+    backText: { fontSize: 16 * s, color: '#4fc3f7' },
+    title: { fontSize: 20 * s, fontWeight: 'bold', color: '#fff' },
+    subtitle: { fontSize: 12 * s, color: '#aaa', marginTop: 2 },
+    content: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 30, backgroundColor: '#f4f6f8' },
+    guide: { fontSize: 16 * s, textAlign: 'center', color: '#555', marginBottom: 40, lineHeight: 28 },
+
+    idleContextContainer: { width: '100%', paddingHorizontal: 10, maxWidth: 400, alignSelf: 'center' },
+    idleContextBtn: { backgroundColor: '#e3f2fd', padding: 20, borderRadius: 12, borderWidth: 2, borderColor: '#1565c0', alignItems: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 4 },
+    idleContextBtnTitle: { color: '#1565c0', fontSize: 18 * s, fontWeight: 'bold', marginBottom: 5 },
+    idleContextBtnDesc: { color: '#546e7a', fontSize: 12 * s, textAlign: 'center' },
+
+    errorText: { color: 'red', textAlign: 'center', fontSize: 14 * s, marginTop: 20 },
+
+    contextBar: { flexDirection: 'row', padding: 12, backgroundColor: '#e3f2fd', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#bbdefb' },
+    contextLabel: { fontSize: 13 * s, fontWeight: 'bold', color: '#1565c0' },
+    contextBtns: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#ccc', overflow: 'hidden' },
+    ctxBtn: { paddingVertical: 6, paddingHorizontal: 12 },
+    ctxBtnActive: { backgroundColor: '#1565c0' },
+    ctxBtnTxt: { fontSize: 12 * s, color: '#555', fontWeight: 'bold' },
+    ctxBtnTxtActive: { color: '#fff' },
+
+    tabBar: { flexDirection: 'row', backgroundColor: '#fff', elevation: 2 },
+    tabItem: { flex: 1, paddingVertical: 14, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
+    tabItemActive: { borderBottomColor: '#2196F3' },
+    tabText: { fontSize: 14 * s, fontWeight: '600', color: '#757575' },
+    tabTextActive: { color: '#2196F3' },
+
+    tabContent: { padding: 15 },
+    sectionHeader: { fontSize: 14 * s, fontWeight: 'bold', color: '#37474f', marginBottom: 12, marginTop: 15 },
+
+    metadataCard: { backgroundColor: '#fff', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#eceff1' },
+    fieldRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 4 },
+    fieldLab: { fontSize: 13 * s, color: '#546e7a', fontWeight: '500' },
+    fieldVal: { fontSize: 13 * s, color: '#263238', fontFamily: 'monospace', fontWeight: 'bold' },
+
+    unifiedCard: { backgroundColor: '#fff', borderRadius: 6, marginBottom: 8, padding: 12, borderLeftWidth: 5, elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, borderWidth: 1, borderColor: '#eceff1' },
+    checkName: { fontSize: 14 * s, fontWeight: 'bold', color: '#37474f' },
+    reasonText: { fontSize: 11 * s, color: '#c62828', marginTop: 4, fontStyle: 'italic' },
+
+    blockerCard: { backgroundColor: '#fff5f5', borderRadius: 8, padding: 16, marginBottom: 15, borderWidth: 2, borderColor: '#f44336' },
+    blockerTitle: { fontSize: 16 * s, fontWeight: 'bold', color: '#c62828', marginBottom: 8 },
+    blockerText: { fontSize: 14 * s, color: '#b71c1c', marginBottom: 4 },
+    blockerActionBox: { marginTop: 12, backgroundColor: '#fff', padding: 12, borderRadius: 6, borderWidth: 1, borderColor: '#ffcdd2' },
+    blockerActionLabel: { fontSize: 12 * s, color: '#d32f2f', fontWeight: 'bold', marginBottom: 4 },
+    blockerActionReq: { fontSize: 14 * s, color: '#000', fontFamily: 'monospace', fontWeight: 'bold', marginBottom: 12 },
+    blockerBtn: { backgroundColor: '#f44336', padding: 10, borderRadius: 6, alignItems: 'center' },
+    blockerBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 * s },
+
+    unauthCard: { backgroundColor: '#fafafa', borderRadius: 8, padding: 20, alignItems: 'center', borderColor: '#eee', borderWidth: 1, marginTop: 20 },
+    unauthTitle: { fontSize: 16 * s, fontWeight: 'bold', color: '#757575', marginBottom: 10 },
+    unauthText: { fontSize: 14 * s, color: '#9e9e9e', textAlign: 'center', marginBottom: 5 },
+
+    jsonContainer: { backgroundColor: '#263238', borderRadius: 8, padding: 10, height: 400 },
+    jsonText: { color: '#c3e88d', fontFamily: 'monospace', fontSize: 11 * s },
+    monoText: { fontFamily: 'monospace', fontSize: 12 * s, color: '#546e7a', marginVertical: 2 },
+
+    receiptBadge: { backgroundColor: '#e8f5e9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: '#c8e6c9' },
+    receiptText: { color: '#2e7d32', fontWeight: 'bold', fontSize: 11 * s }
+});

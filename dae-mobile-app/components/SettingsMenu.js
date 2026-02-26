@@ -60,6 +60,12 @@ export default function SettingsMenu({ onNavigate, onBack }) {
             title: 'Simulate Incident (M17)',
             desc: 'Inject faults to test detection logic',
             icon: '⚠'
+        },
+        {
+            id: 'CSR_DASHBOARD',
+            title: 'CSR Support Console',
+            desc: 'Simulate agent fetching BYUSE diagnostic data',
+            icon: '🎧'
         }
     ];
 

@@ -120,9 +120,13 @@ export const simulateIncident = async (type, duration) => {
     }
 };
 
-export const triggerOBH = async () => {
+export const triggerOBH = async (context = null) => {
     try {
-        const response = await fetch(`${API_BASE_URL}/obh/trigger`, {
+        let url = `${API_BASE_URL}/obh/trigger`;
+        if (context) {
+            url += `?context=${encodeURIComponent(context)}`;
+        }
+        const response = await fetch(url, {
             method: 'POST'
         });
         return await response.json();

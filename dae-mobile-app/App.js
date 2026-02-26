@@ -13,6 +13,7 @@ import ProofCard from './components/ProofCard';
 import MetricsView from './components/MetricsView';
 import ModuleInspector from './components/ModuleInspector';
 import IpConfigScreen from './components/IpConfigScreen';
+import CsrDashboard from './components/CsrDashboard';
 
 
 export default function App() {
@@ -58,7 +59,8 @@ export default function App() {
       setCurrentScreen('FLEET');
     } else if (currentScreen === 'SETTINGS') {
       setCurrentScreen('HOME');
-
+    } else if (currentScreen === 'CSR_DASHBOARD') {
+      setCurrentScreen('SETTINGS');
     } else if (currentScreen === 'SIMULATE') {
       setCurrentScreen('SETTINGS');
     } else {
@@ -190,6 +192,10 @@ export default function App() {
 
       {currentScreen === 'OBH' && (
         <OneButtonHelper onBack={() => setCurrentScreen('HOME')} />
+      )}
+
+      {currentScreen === 'CSR_DASHBOARD' && (
+        <CsrDashboard onBack={navigateBack} />
       )}
 
       {currentScreen === 'FLEET' && (
