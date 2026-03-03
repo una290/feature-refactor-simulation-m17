@@ -486,9 +486,9 @@ def trigger_obh(context: str = None):
         # Export to current directory or a 'bundles' subdir
         import os
         os.makedirs("bundles", exist_ok=True)
-        # Pass authority_scope_ref="isp-support" to simulate an authorized engineer
-        # This ensures the ProofCard V1.3 is visible in the frontend app.
-        res = core.obh_export("bundles", authority_scope_ref="isp-support", byuse_context_ref=context)
+        # Pass authority_scope_ref=None to simulate a user
+        # This ensures the ProofCard V1.3 is generated safely with PC-Min only.
+        res = core.obh_export("bundles", authority_scope_ref=None, byuse_context_ref=context)
         return {
             "status": "Exported",
             "episode_id": res.episode_id,
@@ -497,6 +497,91 @@ def trigger_obh(context: str = None):
         }
     except Exception as e:
         return {"error": str(e)}
+
+@app.get("/obh/proofcard/{episode_id}")
+def retrieve_obh_bundle(episode_id: str, context: str = None):
+    """
+    Retrieve an existing OBH bundle with dynamic BYUSE Context applied (CSR view).
+    """
+    if not core:
+        return {"error": "Core not initialized"}
+    
+    # CSRs always access via 'isp-support' scope
+    bundle = core.obh.retrieve_bundle(episode_id, byuse_context_ref=context, authority_scope_ref="isp-support")
+    if not bundle:
+         return {"error": f"Episode {episode_id} not found."}
+         
+    return {
+         "status": "Retrieved",
+         "episode_id": episode_id,
+         "bundle": bundle
+    }
+
+from pydantic import BaseModel
+class SignManifestRequest(BaseModel):
+    episode_id: str
+
+# In-memory storage for pending consent requests
+# Structure: { "episode_id": {"csr_id": str, "timestamp": float} }
+PENDING_CONSENTS = {}
+
+class ConsentRequest(BaseModel):
+    episode_id: str
+    csr_id: str
+
+@app.post("/api/obh/consent/request")
+def request_consent(req: ConsentRequest):
+    """
+    CSR requests authorization from the user to view PC-Priv payload.
+    """
+    import time
+    PENDING_CONSENTS[req.episode_id] = {
+        "csr_id": req.csr_id,
+        "timestamp": time.time()
+    }
+    # Future: Audit log CONSENT_REQUESTED
+    return {"status": "Pending", "episode_id": req.episode_id}
+
+@app.get("/api/obh/consent/pending")
+def get_pending_consents():
+    """
+    User app fetches current pending consent requests.
+    Cleans up expired requests (e.g. > 15 mins old).
+    """
+    import time
+    now = time.time()
+    expired = []
+    
+    # Expiry 15 minutes = 900 seconds
+    # Convert to list to return to frontend
+    pending_list = []
+    for ep_id, data in PENDING_CONSENTS.items():
+        if now - data["timestamp"] > 900:
+            expired.append(ep_id)
+        else:
+            pending_list.append({"episode_id": ep_id, "csr_id": data["csr_id"], "timestamp": data["timestamp"]})
+            
+    for ep_id in expired:
+        del PENDING_CONSENTS[ep_id]
+        
+    return {"pending_requests": pending_list}
+
+@app.post("/obh/manifest/sign")
+def sign_obh_manifest(req: SignManifestRequest):
+    """
+    Customer signs the manifest to authorize an episode for closure.
+    """
+    if not core:
+         return {"error": "Core not initialized"}
+         
+    core.obh.signed_manifests.add(req.episode_id)
+    
+    # Remove from pending consents if it was there
+    if req.episode_id in PENDING_CONSENTS:
+        del PENDING_CONSENTS[req.episode_id]
+        # Future: Audit log CONSENT_GRANTED
+        
+    return {"status": "Signed", "episode_id": req.episode_id}
 
 @app.get("/api/wan")
 def get_wan_info():

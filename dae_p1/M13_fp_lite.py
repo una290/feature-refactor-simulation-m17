@@ -273,7 +273,8 @@ class ProofCardGenerator:
                  window_ref_str: str = "W-LATEST",
                  manifest_ref_str: str = "TBD",
                  authority_scope_ref: Optional[str] = None,
-                 byuse_context_ref: Optional[str] = None) -> ProofCard:
+                 byuse_context_ref: Optional[str] = None,
+                 episode_id: Optional[str] = None) -> ProofCard:
         
         from .M00_common import ObservabilityResult, EpisodeRecognition
         
@@ -294,9 +295,11 @@ class ProofCardGenerator:
                 
         min_ts_iso = iso(min_ts) if min_ts else None
         max_ts_iso = iso(max_ts) if max_ts else None
+        
+        ep_id = episode_id or f"ep-{uuid.uuid4().hex[:8]}"
             
         dummy_rec = EpisodeRecognition(
-            episode_id=f"ep-{uuid.uuid4().hex[:8]}",
+            episode_id=ep_id,
             episode_start=time.time(),
             worst_window_ref=window_ref_str,
             primary_verdict="UNKNOWN",

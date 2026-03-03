@@ -76,7 +76,7 @@ class PrivacyGovernance:
 
         return card_dict
 
-    def evaluate_closure_grade(self, proof_card_dict: Dict[str, Any], context_ref: str) -> Tuple[str, Optional[str]]:
+    def evaluate_closure_grade(self, proof_card_dict: Dict[str, Any], context_ref: str, is_signed: bool = False) -> Tuple[str, Optional[str]]:
         """
         Hook 3: BYUSE Compliance Validator
         Given a context (e.g., 'SUPPORT_CLOSURE', 'DISPUTE'), evaluate if the card has the necessary refs.
@@ -87,10 +87,11 @@ class PrivacyGovernance:
             
         # BYUSE Logic:
         # If context is High Reliance (e.g., 'dispute', 'compliance'), we require explicit 'signed_manifest'
-        # In this simulation, let's assume we always demand an upgrade if it's a dispute context.
-        
         if "dispute" in context_ref or "compliance" in context_ref:
-            return "NOT_CLOSURE_GRADE", "UPREQ-SIGNED-MANIFEST"
+            if is_signed:
+                return "CLOSURE_GRADE", None
+            else:
+                return "NOT_CLOSURE_GRADE", "UPREQ-SIGNED-MANIFEST"
              
         return "DELIVERY_GRADE", None
 

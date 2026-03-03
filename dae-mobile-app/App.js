@@ -81,6 +81,7 @@ export default function App() {
         const saved = await AsyncStorage.getItem('api_ip');
         if (saved) {
           setIp(saved);
+          setBaseUrl(saved);
         }
       } catch (e) {
         console.error('Failed to load IP', e);

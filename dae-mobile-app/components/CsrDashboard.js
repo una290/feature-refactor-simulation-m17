@@ -1,37 +1,69 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
-import { triggerOBH } from '../src/api';
+import React, { useState, useMemo, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, TextInput } from 'react-native';
+import { fetchOBHBundle, requestConsent } from '../src/api';
 
 export default function CsrDashboard({ onBack }) {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
     const [activeTab, setActiveTab] = useState('pc-min'); // 'pc-min', 'pc-priv', 'raw'
     const [reportContext, setReportContext] = useState('default'); // 'default', 'dispute'
+    const [searchQuery, setSearchQuery] = useState('');
     const [fontScale, setFontScale] = useState(1.0);
+    const [pendingAuth, setPendingAuth] = useState(false);
 
     const styles = useMemo(() => getStyles(fontScale), [fontScale]);
 
-    const handlePress = async (context = reportContext) => {
-        setLoading(true);
-        setActiveTab('pc-min');
+    const handleSearch = async (context = reportContext, isPolling = false) => {
+        if (!searchQuery) return;
+        if (!isPolling) {
+            setLoading(true);
+            setActiveTab('pc-min');
+        }
 
         try {
             const apiContext = context === 'default' ? null : context;
-            const data = await triggerOBH(apiContext);
-            if (!data) throw new Error("Failed to contact server.");
+            const data = await fetchOBHBundle(searchQuery.trim(), apiContext);
+            if (!data || data.error) throw new Error(data?.error || "Failed to contact server.");
             setResult(data);
+
+            // If we were polling and the grade is now DELIVERY_GRADE, stop polling
+            if (isPolling && data.bundle?.pc_min?.evidence_grade !== 'NOT_CLOSURE_GRADE') {
+                setPendingAuth(false);
+                setActiveTab('pc-priv'); // Auto-switch to priv tab when unlocked
+            }
         } catch (err) {
             console.error(err);
-            setResult({ error: "Connection Failed. Check IP Settings." });
+            if (!isPolling) setResult({ error: err.message || "Connection Failed." });
         } finally {
-            setLoading(false);
+            if (!isPolling) setLoading(false);
         }
     };
+
+    const handleAuthRequest = async () => {
+        if (!result?.bundle?.pc_min?.episode_id) return;
+        setPendingAuth(true);
+        await requestConsent(result.bundle.pc_min.episode_id);
+    };
+
+    // Polling hook
+    useEffect(() => {
+        let interval;
+        if (pendingAuth) {
+            interval = setInterval(() => {
+                handleSearch(reportContext, true);
+            }, 3000); // Poll every 3 seconds
+        }
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [pendingAuth, reportContext, searchQuery]);
 
     const handleContextChange = (newContext) => {
         setReportContext(newContext);
         if (result && !result.error) {
-            handlePress(newContext);
+            // reset auth state on context change
+            setPendingAuth(false);
+            handleSearch(newContext);
         }
     };
 
@@ -105,8 +137,14 @@ export default function CsrDashboard({ onBack }) {
                             <View style={styles.blockerActionBox}>
                                 <Text style={styles.blockerActionLabel}>Required to Proceed:</Text>
                                 <Text style={styles.blockerActionReq}>📝 {pcMin.upgrade_requirements_ref}</Text>
-                                <TouchableOpacity style={styles.blockerBtn}>
-                                    <Text style={styles.blockerBtnText}>👉 Send Authorization Request to User</Text>
+                                <TouchableOpacity
+                                    style={[styles.blockerBtn, pendingAuth && { backgroundColor: '#9e9e9e' }]}
+                                    onPress={handleAuthRequest}
+                                    disabled={pendingAuth}
+                                >
+                                    <Text style={styles.blockerBtnText}>
+                                        {pendingAuth ? "⏳ Request Sent, Waiting for User Authorization..." : "👉 Send Authorization Request to User"}
+                                    </Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -171,6 +209,21 @@ export default function CsrDashboard({ onBack }) {
             }
 
             if (activeTab === 'pc-priv') {
+                const obs = bundle.pc_priv.observability || {};
+                const obsStatus = obs.observability_status || obs.status || 'UNKNOWN';
+                const isDegraded = obs.opaque_risk || obs.is_degraded || false;
+                const missingRefs = obs.missing_refs || [];
+                const originHint = obs.origin_hint || 'unknown';
+
+                const isSufficient = obsStatus === 'SUFFICIENT';
+                const actionColor = isSufficient ? '#e8f5e9' : '#fff3e0';
+                const actionBorder = isSufficient ? '#c8e6c9' : '#ffe0b2';
+                const actionTextColor = isSufficient ? '#2e7d32' : '#e65100';
+                const actionTitle = isSufficient ? '💡 Analysis Confidence: HIGH' : '⚠️ Analysis Confidence: DEGRADED';
+                const actionDesc = isSufficient
+                    ? 'Diagnosis context is fully mapped and reliable. No opaque risks detected. Proceed with the standard automated resolution steps.'
+                    : 'Diagnosis has opaque risks due to missing context. DO NOT blindly apply automated steps. Please ask customer to restart the router to gather a fresh diagnosis trace.';
+
                 return (
                     <View style={styles.tabContent}>
                         <Text style={styles.sectionHeader}>PRIVACY REFERENCES (Internal Refs)</Text>
@@ -183,10 +236,44 @@ export default function CsrDashboard({ onBack }) {
                             )}
                         </View>
 
-                        <Text style={styles.sectionHeader}>OBSERVABILITY</Text>
+                        <Text style={styles.sectionHeader}>CONTEXT AUDIT (OBSERVABILITY)</Text>
+
+                        {/* Agent Action Guide (Proposal 3) */}
+                        <View style={{ backgroundColor: actionColor, padding: 15, borderRadius: 8, marginBottom: 15, borderWidth: 1, borderColor: actionBorder }}>
+                            <Text style={{ fontWeight: 'bold', fontSize: 16 * fontScale, color: actionTextColor, marginBottom: 8 }}>
+                                {actionTitle}
+                            </Text>
+                            <Text style={{ fontSize: 14 * fontScale, color: actionTextColor, lineHeight: 20 }}>
+                                {actionDesc}
+                            </Text>
+                        </View>
+
+                        {/* Checklist & Radar (Proposal 2) */}
                         <View style={styles.metadataCard}>
-                            <View style={styles.fieldRow}><Text style={styles.fieldLab}>Status</Text><Text style={styles.fieldVal}>{pcPriv.observability?.status}</Text></View>
-                            <View style={styles.fieldRow}><Text style={styles.fieldLab}>Degraded</Text><Text style={styles.fieldVal}>{pcPriv.observability?.is_degraded ? 'Yes' : 'No'}</Text></View>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 10 }}>
+                                <Text style={{ fontWeight: 'bold', color: '#555', fontSize: 14 * fontScale }}>System Audit Status</Text>
+                                <Text style={{ fontWeight: 'bold', color: actionTextColor, fontSize: 14 * fontScale }}>
+                                    {isSufficient ? '🟢 SUFFICIENT' : '🟠 INSUFFICIENT'}
+                                </Text>
+                            </View>
+
+                            <View style={{ marginBottom: 5 }}>
+                                <Text style={{ fontSize: 13 * fontScale, color: '#333', marginBottom: 6 }}>
+                                    {(!isSufficient && missingRefs.includes('origin_hint')) ? '❌ Event Origin (Trace missing)' : '✅ Event Origin (Trace captured)'}
+                                </Text>
+                                <Text style={{ fontSize: 13 * fontScale, color: '#333', marginBottom: 6 }}>
+                                    {(!isSufficient && missingRefs.includes('change_ref')) ? '❌ Change Refs (System logs missing)' : '✅ Change Refs (System logs audited)'}
+                                </Text>
+                                <Text style={{ fontSize: 13 * fontScale, color: '#333', marginBottom: 6 }}>
+                                    {(!isSufficient && missingRefs.includes('version_refs')) ? '❌ Version Info (Firmware mismatch risk)' : '✅ Version Info (Firmware verified)'}
+                                </Text>
+                            </View>
+
+                            {isDegraded && (
+                                <Text style={{ fontSize: 12 * fontScale, color: '#e65100', marginTop: 10, fontStyle: 'italic' }}>
+                                    ↳ Warning: Opaque risk detected. Missing context mapped to: {missingRefs.join(', ') || 'Unknown'}
+                                </Text>
+                            )}
                         </View>
                     </View>
                 );
@@ -278,15 +365,17 @@ export default function CsrDashboard({ onBack }) {
                     </View>
 
                     <View style={styles.tabBar}>
-                        {['PC-Min (Overview)', 'PC-Priv (Details)', 'Raw Data'].map((tab) => {
-                            const key = tab.toLowerCase().split(' ')[0]; // pc-min, pc-priv, raw
-                            const isActive = activeTab === key;
-                            return (
-                                <TouchableOpacity key={key} style={[styles.tabItem, isActive && styles.tabItemActive]} onPress={() => setActiveTab(key)}>
-                                    <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab.split(' ')[0]}</Text>
-                                </TouchableOpacity>
-                            );
-                        })}
+                        {['PC-Min (Overview)', 'PC-Priv (Details)', 'Raw Data']
+                            .filter(tab => reportContext === 'default' ? tab.startsWith('PC-Min') : true)
+                            .map((tab) => {
+                                const key = tab.toLowerCase().split(' ')[0]; // pc-min, pc-priv, raw
+                                const isActive = activeTab === key;
+                                return (
+                                    <TouchableOpacity key={key} style={[styles.tabItem, isActive && styles.tabItemActive]} onPress={() => setActiveTab(key)}>
+                                        <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab.split(' ')[0]}</Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
                     </View>
 
                     {loading ? (
@@ -298,29 +387,40 @@ export default function CsrDashboard({ onBack }) {
                     )}
                 </View>
             ) : (
-                <View style={styles.content}>
+                <View style={[styles.content, { justifyContent: 'flex-start', paddingTop: 60 }]}>
                     <Text style={styles.guide}>
                         Assume the identity of a Customer Support Representative resolving an issue with a customer's device.
                     </Text>
 
-                    <View style={styles.idleContextContainer}>
-                        <TouchableOpacity
-                            style={styles.idleContextBtn}
-                            onPress={() => { setReportContext('default'); handlePress('default'); }}
-                            disabled={loading}
-                        >
-                            <Text style={styles.idleContextBtnTitle}>Perform Routine Check</Text>
-                            <Text style={styles.idleContextBtnDesc}>Standard diagnostics with default privacy</Text>
-                        </TouchableOpacity>
+                    <View style={styles.searchContainer}>
+                        <Text style={styles.searchLabel}>Retrieve Diagnostic Session</Text>
+                        <TextInput
+                            style={styles.searchInput}
+                            placeholder="Enter Episode ID (e.g. 550e8400...)"
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            autoCorrect={false}
+                            autoCapitalize="none"
+                        />
+                        <View style={styles.idleContextContainer}>
+                            <TouchableOpacity
+                                style={[styles.idleContextBtn, !searchQuery && { opacity: 0.5 }]}
+                                onPress={() => { setReportContext('default'); handleSearch('default'); }}
+                                disabled={loading || !searchQuery}
+                            >
+                                <Text style={styles.idleContextBtnTitle}>Perform Routine Check</Text>
+                                <Text style={styles.idleContextBtnDesc}>Standard diagnostics with default privacy</Text>
+                            </TouchableOpacity>
 
-                        <TouchableOpacity
-                            style={[styles.idleContextBtn, { marginTop: 15 }]}
-                            onPress={() => { setReportContext('dispute'); handlePress('dispute'); }}
-                            disabled={loading}
-                        >
-                            <Text style={styles.idleContextBtnTitle}>Escalate to Dispute/Closure</Text>
-                            <Text style={styles.idleContextBtnDesc}>Strict mode requiring signed manifest for legal cases</Text>
-                        </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.idleContextBtn, { marginTop: 15 }, !searchQuery && { opacity: 0.5 }]}
+                                onPress={() => { setReportContext('dispute'); handleSearch('dispute'); }}
+                                disabled={loading || !searchQuery}
+                            >
+                                <Text style={styles.idleContextBtnTitle}>Escalate to Dispute/Closure</Text>
+                                <Text style={styles.idleContextBtnDesc}>Strict mode requiring signed manifest for legal cases</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
 
                     {loading && <ActivityIndicator size="large" color="#1565c0" style={{ marginTop: 30 }} />}
@@ -345,6 +445,10 @@ const getStyles = (s) => StyleSheet.create({
     idleContextBtn: { backgroundColor: '#e3f2fd', padding: 20, borderRadius: 12, borderWidth: 2, borderColor: '#1565c0', alignItems: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 4 },
     idleContextBtnTitle: { color: '#1565c0', fontSize: 18 * s, fontWeight: 'bold', marginBottom: 5 },
     idleContextBtnDesc: { color: '#546e7a', fontSize: 12 * s, textAlign: 'center' },
+
+    searchContainer: { width: '100%', maxWidth: 400, alignSelf: 'center', marginBottom: 20 },
+    searchLabel: { fontSize: 14 * s, fontWeight: 'bold', color: '#37474f', marginBottom: 8, textTransform: 'uppercase' },
+    searchInput: { backgroundColor: '#fff', borderWidth: 2, borderColor: '#eceff1', borderRadius: 8, padding: 15, fontSize: 16 * s, color: '#000', marginBottom: 20, fontFamily: 'monospace' },
 
     errorText: { color: 'red', textAlign: 'center', fontSize: 14 * s, marginTop: 20 },
 

@@ -136,4 +136,54 @@ export const triggerOBH = async (context = null) => {
     }
 };
 
+export const fetchOBHBundle = async (episodeId, context = null) => {
+    try {
+        let url = `${API_BASE_URL}/obh/proofcard/${encodeURIComponent(episodeId)}`;
+        if (context) {
+            url += `?context=${encodeURIComponent(context)}`;
+        }
+        const response = await fetch(url);
+        return await response.json();
+    } catch (error) {
+        console.error("Error fetching OBH bundle:", error);
+        return null;
+    }
+};
 
+export const signManifest = async (episodeId) => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/obh/manifest/sign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ episode_id: episodeId })
+        });
+        return await response.json();
+    } catch (error) {
+        console.error("Error signing manifest:", error);
+        return null;
+    }
+};
+
+export const requestConsent = async (episodeId, csrId = "8871") => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/obh/consent/request`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ episode_id: episodeId, csr_id: csrId })
+        });
+        return await response.json();
+    } catch (error) {
+        console.error("Error requesting consent:", error);
+        return null;
+    }
+};
+
+export const fetchPendingConsents = async () => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/obh/consent/pending`);
+        return await response.json();
+    } catch (error) {
+        console.error("Error fetching pending consents:", error);
+        return { pending_requests: [] };
+    }
+};
