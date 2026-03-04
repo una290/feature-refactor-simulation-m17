@@ -108,7 +108,9 @@
 
 ### 3.2 GET /obh/proofcard/{episode_id}
 - **說明**：CSR 讀取特定的 `episode_id` 報告。**這是決定前端能否看到私密資料 (`PC-Priv`) 的關鍵 API**。
-- **參數** (`query string`): `context` -> 會強烈影響回傳的資料多寡！(例如帶入 `context=dispute`)
+- **參數** (`query string`): 
+  - `context` -> 會強烈影響回傳的資料多寡！(例如帶入 `context=dispute`)
+  - `fields` -> (新增) 帶入 `fields=pc_min` 可強制後端在序列化前拋棄巨大的 payload 陣列，達成毫秒級的高速回傳，專供歷史列表的極簡視圖使用。
 - **輸出**：
   ```json
   {
@@ -133,6 +135,26 @@
 ### 3.5 POST /obh/manifest/sign
 - **說明**：User 在 App 點擊「同意」時呼叫，將該 `episode_id` 加入白名單，解鎖給 CSR 觀看 `PC-Priv`。
 - **Body**：`{"episode_id": "ep-xxxx"}`
+
+### 3.6 GET /obh/history_summary
+- **說明**：(新增) 取得系統中所有已保存的 Proof Card 的輕量化歷史紀錄清單，陣列依時間由新到舊排序。
+- **輸出**：
+  ```json
+  {
+    "status": "Success",
+    "history": [
+      {
+        "episode_id": "ep-xxxx",
+        "profile_ref": "WIFI78_INSTALL_ACCEPT",
+        "window_ref": "W-LATEST-100",
+        "verdict": "FAIL",
+        "time": "2023-10-27T10:00:00Z",
+        "is_dispute": true,
+        "is_signed": false
+      }
+    ]
+  }
+  ```
 
 ---
 
