@@ -11,7 +11,7 @@ import FleetView from './components/FleetView';
 import DeviceDrilldown from './components/DeviceDrilldown';
 import ProofCard from './components/ProofCard';
 import MetricsView from './components/MetricsView';
-import ModuleInspector from './components/ModuleInspector';
+
 import IpConfigScreen from './components/IpConfigScreen';
 import CsrDashboard from './components/CsrDashboard';
 
@@ -44,9 +44,7 @@ export default function App() {
     setCurrentScreen('METRICS');
   };
 
-  const navigateToModules = () => {
-    setCurrentScreen('MODULES');
-  };
+
 
   const navigateBack = () => {
     if (currentScreen === 'PROOF') {
@@ -54,7 +52,7 @@ export default function App() {
     } else if (currentScreen === 'DRILLDOWN') {
       setCurrentScreen('FLEET');
       setSelectedDeviceId(null);
-    } else if (['METRICS', 'MODULES'].includes(currentScreen)) {
+    } else if (currentScreen === 'METRICS') {
       // Return to wherever we came from, but for now FLEET is the main legacy parent
       setCurrentScreen('FLEET');
     } else if (currentScreen === 'SETTINGS') {
@@ -203,7 +201,7 @@ export default function App() {
         <FleetView
           onNavigate={navigateToDrilldown}
           onNavigateMetrics={navigateToMetrics}
-          onNavigateModules={navigateToModules}
+
           onBack={() => setCurrentScreen('HOME')} // Pass back prop if FleetView supports it, or add button
         />
       )}
@@ -224,9 +222,7 @@ export default function App() {
       {currentScreen === 'METRICS' && (
         <MetricsView onBack={navigateBack} />
       )}
-      {currentScreen === 'MODULES' && (
-        <ModuleInspector onBack={navigateBack} />
-      )}
+
 
 
     </SafeAreaView>
