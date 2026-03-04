@@ -10,7 +10,6 @@ import OneButtonHelper from './components/OneButtonHelper';
 import FleetView from './components/FleetView';
 import DeviceDrilldown from './components/DeviceDrilldown';
 import ProofCard from './components/ProofCard';
-import MetricsView from './components/MetricsView';
 
 import IpConfigScreen from './components/IpConfigScreen';
 import CsrDashboard from './components/CsrDashboard';
@@ -25,9 +24,6 @@ export default function App() {
   // We no longer automatically set IP on load, we just wait for user in HomeDashboard
 
   const handleNavigate = (screenId) => {
-    if (screenId === 'PROOF') {
-      setSelectedDeviceId('local');
-    }
     setCurrentScreen(screenId);
   };
 
@@ -40,10 +36,6 @@ export default function App() {
     setCurrentScreen('PROOF');
   };
 
-  const navigateToMetrics = () => {
-    setCurrentScreen('METRICS');
-  };
-
 
 
   const navigateBack = () => {
@@ -52,9 +44,6 @@ export default function App() {
     } else if (currentScreen === 'DRILLDOWN') {
       setCurrentScreen('FLEET');
       setSelectedDeviceId(null);
-    } else if (currentScreen === 'METRICS') {
-      // Return to wherever we came from, but for now FLEET is the main legacy parent
-      setCurrentScreen('FLEET');
     } else if (currentScreen === 'SETTINGS') {
       setCurrentScreen('HOME');
     } else if (currentScreen === 'CSR_DASHBOARD') {
@@ -200,8 +189,6 @@ export default function App() {
       {currentScreen === 'FLEET' && (
         <FleetView
           onNavigate={navigateToDrilldown}
-          onNavigateMetrics={navigateToMetrics}
-
           onBack={() => setCurrentScreen('HOME')} // Pass back prop if FleetView supports it, or add button
         />
       )}
@@ -218,9 +205,6 @@ export default function App() {
           deviceId={selectedDeviceId}
           onBack={navigateBack}
         />
-      )}
-      {currentScreen === 'METRICS' && (
-        <MetricsView onBack={navigateBack} />
       )}
 
 

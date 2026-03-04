@@ -34,15 +34,7 @@ export default function HomeDashboard({
             desc: 'Monitor all devices (Legacy)',
             color: '#007AFF',
             icon: '📱'
-        },
-        {
-            id: 'PROOF',
-            title: 'View Proof Card',
-            desc: 'Generate V1.3 Proof Card',
-            color: '#9C27B0',
-            icon: '📜'
-        },
-
+        }
     ];
 
     return (

@@ -1,7 +1,74 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, Button, ActivityIndicator } from 'react-native';
-import { fetchDeviceDetail, fetchMetrics } from '../src/api';
+import { StyleSheet, Text, View, ScrollView, Button, ActivityIndicator, Dimensions } from 'react-native';
+import { fetchDeviceDetail, fetchMetrics, fetchStatus, checkInstallVerification } from '../src/api';
 import Svg, { Polyline } from 'react-native-svg';
+
+const MetricCard = ({ label, value, unit, chartData, color }) => {
+    const chartWidth = Dimensions.get('window').width - 64;
+    const chartHeight = 60;
+
+    const renderChart = () => {
+        if (!chartData || chartData.length < 2) return null;
+
+        const max = Math.max(...chartData);
+        const min = Math.min(...chartData);
+        const range = max - min || 1;
+
+        const points = chartData.map((val, idx) => {
+            const x = (idx / (chartData.length - 1)) * chartWidth;
+            const y = chartHeight - ((val - min) / range) * chartHeight;
+            return `${x},${y}`;
+        }).join(' ');
+
+        return (
+            <Svg width={chartWidth} height={chartHeight} style={styles.chart}>
+                <Polyline
+                    points={points}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth="2"
+                />
+            </Svg>
+        );
+    };
+
+    return (
+        <View style={styles.metricCardBig}>
+            <Text style={styles.metricLabelBig}>{label}</Text>
+            <View style={styles.metricValueRowBig}>
+                <Text style={[styles.metricValueBig, { color }]}>{value}</Text>
+                <Text style={styles.metricUnitBig}>{unit}</Text>
+            </View>
+            {renderChart()}
+        </View>
+    );
+};
+
+const StatusIndicator = ({ status }) => {
+    let statusColor = '#9e9e9e';
+    switch (status?.toLowerCase()) {
+        case 'ok': statusColor = '#4caf50'; break;
+        case 'unstable': statusColor = '#ff9800'; break;
+        case 'suspected': statusColor = '#f44336'; break;
+        case 'investigating': statusColor = '#2196f3'; break;
+    }
+
+    return (
+        <View style={styles.statusBanner}>
+            <View style={styles.statusItem}>
+                <View style={[styles.statusIndicator, { backgroundColor: statusColor }]} />
+                <View>
+                    <Text style={styles.statusLabel}>System Status</Text>
+                    <Text style={styles.statusValue}>{status?.toUpperCase() || 'LOADING...'}</Text>
+                </View>
+            </View>
+            <View style={styles.statusItem}>
+                <Text style={styles.statusLabel}>Auto-refresh</Text>
+                <Text style={styles.statusValue}>Every 2s</Text>
+            </View>
+        </View>
+    );
+};
 
 const Section = ({ title, children }) => (
     <View style={styles.section}>
@@ -14,6 +81,8 @@ export default function DeviceDrilldown({ deviceId, onNavigateProof, onBack }) {
     const [detail, setDetail] = useState(null);
     const [loading, setLoading] = useState(true);
     const [metrics, setMetrics] = useState(null);
+    const [status, setStatus] = useState(null);
+    const [verification, setVerification] = useState(null);
     const [chartData, setChartData] = useState({
         signal: [],
         tx: [],
@@ -22,7 +91,7 @@ export default function DeviceDrilldown({ deviceId, onNavigateProof, onBack }) {
         memory: []
     });
 
-    const MAX_POINTS = 15;
+    const MAX_POINTS = 20;
 
     useEffect(() => {
         const load = async () => {
@@ -37,35 +106,43 @@ export default function DeviceDrilldown({ deviceId, onNavigateProof, onBack }) {
     useEffect(() => {
         if (deviceId !== 'local') return; // Only fetch metrics for local device
 
-        const loadMetrics = async () => {
-            const metricsData = await fetchMetrics();
-            if (metricsData) {
-                setMetrics(metricsData);
+        const loadDataAndMetrics = async () => {
+            try {
+                const [metricsData, statusData, verificationData] = await Promise.all([
+                    fetchMetrics(),
+                    fetchStatus(),
+                    checkInstallVerification()
+                ]);
 
-                // Update chart data
-                setChartData(prev => {
-                    const newData = {
-                        signal: [...prev.signal, metricsData.signal_strength_pct || 0],
-                        tx: [...prev.tx, metricsData.out_rate || 0],
-                        rx: [...prev.rx, metricsData.in_rate || 0],
-                        cpu: [...prev.cpu, metricsData.cpu_load || 0],
-                        memory: [...prev.memory, metricsData.mem_load || 0]
-                    };
+                if (metricsData) {
+                    setMetrics(metricsData);
+                    setChartData(prev => {
+                        const newData = {
+                            signal: [...prev.signal, metricsData.signal_strength_pct || 0],
+                            tx: [...prev.tx, metricsData.out_rate || 0],
+                            rx: [...prev.rx, metricsData.in_rate || 0],
+                            cpu: [...prev.cpu, metricsData.cpu_load || 0],
+                            memory: [...prev.memory, metricsData.mem_load || 0]
+                        };
 
-                    // Keep only last MAX_POINTS
-                    Object.keys(newData).forEach(key => {
-                        if (newData[key].length > MAX_POINTS) {
-                            newData[key] = newData[key].slice(-MAX_POINTS);
-                        }
+                        Object.keys(newData).forEach(key => {
+                            if (newData[key].length > MAX_POINTS) {
+                                newData[key] = newData[key].slice(-MAX_POINTS);
+                            }
+                        });
+
+                        return newData;
                     });
-
-                    return newData;
-                });
+                }
+                if (statusData) setStatus(statusData.status);
+                if (verificationData) setVerification(verificationData);
+            } catch (err) {
+                console.error("Failed to fetch live data:", err);
             }
         };
 
-        loadMetrics();
-        const interval = setInterval(loadMetrics, 2000);
+        loadDataAndMetrics();
+        const interval = setInterval(loadDataAndMetrics, 2000);
         return () => clearInterval(interval);
     }, [deviceId]);
 
@@ -142,149 +219,99 @@ export default function DeviceDrilldown({ deviceId, onNavigateProof, onBack }) {
 
                 {/* Real-time Metrics - Only for local device */}
                 {deviceId === 'local' && metrics && (
-                    <Section title="Real-time Metrics">
-                        <View style={styles.metricsGrid}>
-                            {/* Signal Strength */}
-                            <View style={styles.metricCard}>
-                                <Text style={styles.metricLabel}>Signal Strength</Text>
-                                <View style={styles.metricValueRow}>
-                                    <Text style={[styles.metricValue, { color: '#667eea' }]}>
-                                        {metrics.signal_strength_pct ?? '--'}
-                                    </Text>
-                                    <Text style={styles.metricUnit}>%</Text>
-                                </View>
-                                {chartData.signal.length > 1 && (
-                                    <Svg width={280} height={40} style={styles.miniChart}>
-                                        <Polyline
-                                            points={chartData.signal.map((val, idx) => {
-                                                const max = Math.max(...chartData.signal);
-                                                const min = Math.min(...chartData.signal);
-                                                const range = max - min || 1;
-                                                const x = (idx / (chartData.signal.length - 1)) * 280;
-                                                const y = 40 - ((val - min) / range) * 40;
-                                                return `${x},${y}`;
-                                            }).join(' ')}
-                                            fill="none"
-                                            stroke="#667eea"
-                                            strokeWidth="2"
-                                        />
-                                    </Svg>
-                                )}
-                            </View>
+                    <Section title="Real-time System Status & Metrics">
+                        <StatusIndicator status={status} />
 
-                            {/* TX Rate */}
-                            <View style={styles.metricCard}>
-                                <Text style={styles.metricLabel}>TX Rate</Text>
-                                <View style={styles.metricValueRow}>
-                                    <Text style={[styles.metricValue, { color: '#48bb78' }]}>
-                                        {metrics.out_rate ? metrics.out_rate.toFixed(1) : '--'}
-                                    </Text>
-                                    <Text style={styles.metricUnit}>Mbps</Text>
-                                </View>
-                                {chartData.tx.length > 1 && (
-                                    <Svg width={280} height={40} style={styles.miniChart}>
-                                        <Polyline
-                                            points={chartData.tx.map((val, idx) => {
-                                                const max = Math.max(...chartData.tx);
-                                                const min = Math.min(...chartData.tx);
-                                                const range = max - min || 1;
-                                                const x = (idx / (chartData.tx.length - 1)) * 280;
-                                                const y = 40 - ((val - min) / range) * 40;
-                                                return `${x},${y}`;
-                                            }).join(' ')}
-                                            fill="none"
-                                            stroke="#48bb78"
-                                            strokeWidth="2"
-                                        />
-                                    </Svg>
-                                )}
-                            </View>
+                        <View style={styles.metricsGridBig}>
+                            <MetricCard
+                                label="Signal Strength"
+                                value={metrics?.signal_strength_pct ?? '--'}
+                                unit="%"
+                                chartData={chartData.signal}
+                                color="#667eea"
+                            />
 
-                            {/* RX Rate */}
-                            <View style={styles.metricCard}>
-                                <Text style={styles.metricLabel}>RX Rate</Text>
-                                <View style={styles.metricValueRow}>
-                                    <Text style={[styles.metricValue, { color: '#4299e1' }]}>
-                                        {metrics.in_rate ? metrics.in_rate.toFixed(1) : '--'}
-                                    </Text>
-                                    <Text style={styles.metricUnit}>Mbps</Text>
-                                </View>
-                                {chartData.rx.length > 1 && (
-                                    <Svg width={280} height={40} style={styles.miniChart}>
-                                        <Polyline
-                                            points={chartData.rx.map((val, idx) => {
-                                                const max = Math.max(...chartData.rx);
-                                                const min = Math.min(...chartData.rx);
-                                                const range = max - min || 1;
-                                                const x = (idx / (chartData.rx.length - 1)) * 280;
-                                                const y = 40 - ((val - min) / range) * 40;
-                                                return `${x},${y}`;
-                                            }).join(' ')}
-                                            fill="none"
-                                            stroke="#4299e1"
-                                            strokeWidth="2"
-                                        />
-                                    </Svg>
-                                )}
-                            </View>
+                            <MetricCard
+                                label="TX Rate"
+                                value={metrics?.out_rate ? metrics.out_rate.toFixed(1) : '--'}
+                                unit="Mbps"
+                                chartData={chartData.tx}
+                                color="#48bb78"
+                            />
 
-                            {/* CPU Usage */}
-                            <View style={styles.metricCard}>
-                                <Text style={styles.metricLabel}>CPU Usage</Text>
-                                <View style={styles.metricValueRow}>
-                                    <Text style={[styles.metricValue, { color: '#ed8936' }]}>
-                                        {metrics.cpu_load ? metrics.cpu_load.toFixed(1) : '--'}
-                                    </Text>
-                                    <Text style={styles.metricUnit}>%</Text>
-                                </View>
-                                {chartData.cpu.length > 1 && (
-                                    <Svg width={280} height={40} style={styles.miniChart}>
-                                        <Polyline
-                                            points={chartData.cpu.map((val, idx) => {
-                                                const max = Math.max(...chartData.cpu);
-                                                const min = Math.min(...chartData.cpu);
-                                                const range = max - min || 1;
-                                                const x = (idx / (chartData.cpu.length - 1)) * 280;
-                                                const y = 40 - ((val - min) / range) * 40;
-                                                return `${x},${y}`;
-                                            }).join(' ')}
-                                            fill="none"
-                                            stroke="#ed8936"
-                                            strokeWidth="2"
-                                        />
-                                    </Svg>
-                                )}
-                            </View>
+                            <MetricCard
+                                label="RX Rate"
+                                value={metrics?.in_rate ? metrics.in_rate.toFixed(1) : '--'}
+                                unit="Mbps"
+                                chartData={chartData.rx}
+                                color="#4299e1"
+                            />
 
-                            {/* Memory Usage */}
-                            <View style={styles.metricCard}>
-                                <Text style={styles.metricLabel}>Memory Usage</Text>
-                                <View style={styles.metricValueRow}>
-                                    <Text style={[styles.metricValue, { color: '#f56565' }]}>
-                                        {metrics.mem_load ? metrics.mem_load.toFixed(1) : '--'}
-                                    </Text>
-                                    <Text style={styles.metricUnit}>%</Text>
-                                </View>
-                                {chartData.memory.length > 1 && (
-                                    <Svg width={280} height={40} style={styles.miniChart}>
-                                        <Polyline
-                                            points={chartData.memory.map((val, idx) => {
-                                                const max = Math.max(...chartData.memory);
-                                                const min = Math.min(...chartData.memory);
-                                                const range = max - min || 1;
-                                                const x = (idx / (chartData.memory.length - 1)) * 280;
-                                                const y = 40 - ((val - min) / range) * 40;
-                                                return `${x},${y}`;
-                                            }).join(' ')}
-                                            fill="none"
-                                            stroke="#f56565"
-                                            strokeWidth="2"
-                                        />
-                                    </Svg>
-                                )}
+                            <MetricCard
+                                label="CPU Usage"
+                                value={metrics?.cpu_load ? metrics.cpu_load.toFixed(1) : '--'}
+                                unit="%"
+                                chartData={chartData.cpu}
+                                color="#ed8936"
+                            />
+
+                            <MetricCard
+                                label="Memory Usage"
+                                value={metrics?.mem_load ? metrics.mem_load.toFixed(1) : '--'}
+                                unit="%"
+                                chartData={chartData.memory}
+                                color="#f56565"
+                            />
+
+                            <View style={styles.metricCardBig}>
+                                <Text style={styles.metricLabelBig}>Timestamp</Text>
+                                <Text style={[styles.metricValueBig, { fontSize: 16, color: '#667eea' }]}>
+                                    {metrics?.ts ? Math.floor(metrics.ts) : '--'}
+                                </Text>
+                                <Text style={styles.metricUnitBig}>Unix Time</Text>
                             </View>
                         </View>
-                        <Text style={styles.metricsNote}>Updates every 2 seconds</Text>
+
+                        {verification && (
+                            <View style={styles.verificationCard}>
+                                <Text style={styles.verificationTitle}>Installation Verification</Text>
+                                <View style={styles.verificationGrid}>
+                                    <View style={styles.verificationItem}>
+                                        <Text style={styles.verificationLabel}>Closure Readiness</Text>
+                                        <Text style={[
+                                            styles.verificationValue,
+                                            { color: verification.closure_readiness === 'ready' ? '#48bb78' : '#f56565' }
+                                        ]}>
+                                            {verification.closure_readiness?.toUpperCase() || '--'}
+                                        </Text>
+                                    </View>
+
+                                    <View style={styles.verificationItem}>
+                                        <Text style={styles.verificationLabel}>Readiness Verdict</Text>
+                                        <Text style={[
+                                            styles.verificationValue,
+                                            { color: verification.readiness_verdict === 'PASS' ? '#48bb78' : '#f56565' }
+                                        ]}>
+                                            {verification.readiness_verdict || '--'}
+                                        </Text>
+                                    </View>
+
+                                    <View style={styles.verificationItem}>
+                                        <Text style={styles.verificationLabel}>Dominant Factor</Text>
+                                        <Text style={styles.verificationValue}>
+                                            {verification.dominant_factor || '--'}
+                                        </Text>
+                                    </View>
+
+                                    <View style={styles.verificationItem}>
+                                        <Text style={styles.verificationLabel}>Confidence</Text>
+                                        <Text style={styles.verificationValue}>
+                                            {verification.confidence ? verification.confidence.toFixed(2) : '--'}
+                                        </Text>
+                                    </View>
+                                </View>
+                            </View>
+                        )}
                     </Section>
                 )}
 
@@ -354,46 +381,83 @@ const styles = StyleSheet.create({
     verdictTitle: { fontSize: 24, fontWeight: '900' },
     missingItem: { color: '#d32f2f', fontSize: 12, marginTop: 2 },
 
-    // Metrics styles
-    metricsGrid: {
-        gap: 12,
-    },
-    metricCard: {
+    // Big Metrics styles from MetricsView
+    statusBanner: {
         backgroundColor: '#fff',
-        borderRadius: 8,
-        padding: 12,
-        marginBottom: 8,
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 16,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
     },
-    metricLabel: {
+    statusItem: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    statusIndicator: { width: 12, height: 12, borderRadius: 6 },
+    statusLabel: { fontSize: 12, color: '#888' },
+    statusValue: { fontSize: 14, fontWeight: '600', color: '#333' },
+    metricsGridBig: { gap: 12 },
+    metricCardBig: {
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        padding: 16,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    metricLabelBig: {
+        fontSize: 12,
+        color: '#888',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        marginBottom: 8,
+        fontWeight: '500',
+    },
+    metricValueRowBig: {
+        flexDirection: 'row',
+        alignItems: 'baseline',
+        marginBottom: 12,
+    },
+    metricValueBig: { fontSize: 32, fontWeight: '700', marginRight: 8 },
+    metricUnitBig: { fontSize: 14, color: '#666' },
+    chart: { marginTop: 8 },
+
+    // Verification Card
+    verificationCard: {
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        padding: 16,
+        marginTop: 16,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    verificationTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#333',
+        marginBottom: 16,
+    },
+    verificationGrid: { gap: 12 },
+    verificationItem: {
+        backgroundColor: '#f9f9f9',
+        padding: 12,
+        borderRadius: 8,
+    },
+    verificationLabel: {
         fontSize: 11,
         color: '#888',
         textTransform: 'uppercase',
-        letterSpacing: 0.5,
+        letterSpacing: 1,
         marginBottom: 4,
-        fontWeight: '500',
     },
-    metricValueRow: {
-        flexDirection: 'row',
-        alignItems: 'baseline',
-        marginBottom: 8,
-    },
-    metricValue: {
-        fontSize: 24,
-        fontWeight: '700',
-        marginRight: 6,
-    },
-    metricUnit: {
-        fontSize: 12,
-        color: '#666',
-    },
-    miniChart: {
-        marginTop: 4,
-    },
-    metricsNote: {
-        fontSize: 11,
-        color: '#999',
-        textAlign: 'center',
-        marginTop: 8,
-        fontStyle: 'italic',
-    },
+    verificationValue: { fontSize: 16, fontWeight: '600', color: '#333' }
 });

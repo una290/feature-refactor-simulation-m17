@@ -75,9 +75,6 @@ export default function FleetView({ onNavigate, onNavigateMetrics, onBack }) {
                 </TouchableOpacity>
 
                 <Text style={styles.title}>Project Fleet Board</Text>
-                <TouchableOpacity style={styles.metricsButton} onPress={onNavigateMetrics}>
-                    <Text style={styles.metricsButtonText}>📊 Metrics</Text>
-                </TouchableOpacity>
 
             </View>
             <FlatList
