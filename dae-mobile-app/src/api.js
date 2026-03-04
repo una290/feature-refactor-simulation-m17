@@ -136,11 +136,14 @@ export const triggerOBH = async (context = null) => {
     }
 };
 
-export const fetchOBHBundle = async (episodeId, context = null) => {
+export const fetchOBHBundle = async (episodeId, context = null, fields = null) => {
     try {
         let url = `${API_BASE_URL}/obh/proofcard/${encodeURIComponent(episodeId)}`;
-        if (context) {
-            url += `?context=${encodeURIComponent(context)}`;
+        const params = [];
+        if (context) params.push(`context=${encodeURIComponent(context)}`);
+        if (fields) params.push(`fields=${encodeURIComponent(fields)}`);
+        if (params.length > 0) {
+            url += `?${params.join('&')}`;
         }
         const response = await fetch(url);
         return await response.json();
@@ -185,5 +188,15 @@ export const fetchPendingConsents = async () => {
     } catch (error) {
         console.error("Error fetching pending consents:", error);
         return { pending_requests: [] };
+    }
+};
+
+export const fetchHistorySummary = async () => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/obh/history_summary`);
+        return await response.json();
+    } catch (error) {
+        console.error("Error fetching history summary:", error);
+        return { status: "Error", history: [] };
     }
 };

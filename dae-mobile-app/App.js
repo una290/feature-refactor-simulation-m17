@@ -10,6 +10,8 @@ import OneButtonHelper from './components/OneButtonHelper';
 import FleetView from './components/FleetView';
 import DeviceDrilldown from './components/DeviceDrilldown';
 import ProofCard from './components/ProofCard';
+import ProofCardList from './components/ProofCardList';
+import HistoricalProofCard from './components/HistoricalProofCard';
 
 import IpConfigScreen from './components/IpConfigScreen';
 import CsrDashboard from './components/CsrDashboard';
@@ -43,6 +45,11 @@ export default function App() {
       setCurrentScreen('DRILLDOWN');
     } else if (currentScreen === 'DRILLDOWN') {
       setCurrentScreen('FLEET');
+      setSelectedDeviceId(null);
+    } else if (currentScreen === 'PROOF_LIST') {
+      setCurrentScreen('HOME');
+    } else if (currentScreen === 'HISTORICAL_PROOF') {
+      setCurrentScreen('PROOF_LIST');
       setSelectedDeviceId(null);
     } else if (currentScreen === 'SETTINGS') {
       setCurrentScreen('HOME');
@@ -207,7 +214,21 @@ export default function App() {
         />
       )}
 
-
+      {currentScreen === 'PROOF_LIST' && (
+        <ProofCardList
+          onNavigateToMin={(epId) => {
+            setSelectedDeviceId(epId);
+            setCurrentScreen('HISTORICAL_PROOF');
+          }}
+          onBack={navigateBack}
+        />
+      )}
+      {currentScreen === 'HISTORICAL_PROOF' && selectedDeviceId && (
+        <HistoricalProofCard
+          episodeId={selectedDeviceId}
+          onBack={navigateBack}
+        />
+      )}
 
     </SafeAreaView>
   );

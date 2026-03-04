@@ -55,6 +55,7 @@ class OBHController:
                 print(f"[DEBUG M12] Failed to load from db: {e}")
                 
         self.signed_manifests: set = set()
+        self.disputed_episodes: set = set()
 
     def run(self, out_dir: str, recognition: EpisodeRecognition,
             metrics: List[Any], events: List[Any], snapshots: List[Any],
@@ -161,13 +162,12 @@ class OBHController:
         self.last_result = res
         return res
 
-    def retrieve_bundle(self, episode_id: str, byuse_context_ref: Optional[str] = None, authority_scope_ref: Optional[str] = None):
+    def retrieve_bundle(self, episode_id: str, byuse_context_ref: Optional[str] = None, authority_scope_ref: Optional[str] = None, fields: Optional[str] = None):
         """Dynamically retrieve and re-project an existing proof card."""
         from dataclasses import asdict
         from .M12_obh_controller import _safe_serialize
         
         print(f"[DEBUG M12] Request to retrieve episode: '{episode_id}'")
-        print(f"[DEBUG M12] Saved episodes in memory/db: {list(self.saved_full_cards.keys())}")
         
         full_card = self.saved_full_cards.get(episode_id)
         if not full_card:
@@ -175,22 +175,34 @@ class OBHController:
             return None
             
         projected_card_dict = self.governance.project_view(full_card, authority_scope_ref)
+        
+        is_dispute = byuse_context_ref and "dispute" in byuse_context_ref
+        if is_dispute:
+            self.disputed_episodes.add(episode_id)
+            
         is_signed = episode_id in self.signed_manifests
         evidence_grade, upgrade_req = self.governance.evaluate_closure_grade(projected_card_dict, byuse_context_ref, is_signed=is_signed)
         
+        # [NEW] Enforce Egress Gate on Payload BEFORE serialization to fix slowness
+        should_strip = False
+        if not is_dispute or evidence_grade == "NOT_CLOSURE_GRADE":
+            should_strip = True
+        if fields == "pc_min":
+            should_strip = True
+            
+        # We need the payload to build pc_priv if it wasn't stripped
+        payload = projected_card_dict.get("payload")
+        
+        if should_strip:
+            projected_card_dict["payload"] = None
+            projected_card_dict["egress_receipt_ref"] = None
+
         bundle = {
             "spec": "DAE_P1_Priv_v2_CapabilityBased",
             "proof_card": _safe_serialize(projected_card_dict),
             "evidence_grade": evidence_grade,
             "upgrade_requirements_ref": upgrade_req
         }
-
-        # [NEW] Enforce Egress Gate on Payload
-        is_dispute = byuse_context_ref and "dispute" in byuse_context_ref
-        if not is_dispute or evidence_grade == "NOT_CLOSURE_GRADE":
-            # Strip Sensitive Payload (Eqv to PC-Min output only)
-            projected_card_dict["payload"] = None
-            projected_card_dict["egress_receipt_ref"] = None
         
         pc_min = {
             "verdict": projected_card_dict.get("primary_verdict"),
@@ -204,8 +216,7 @@ class OBHController:
             "egress_receipt_ref": projected_card_dict.get("egress_receipt_ref")
         }
         
-        payload = projected_card_dict.get("payload")
-        if payload:
+        if payload and not should_strip:
             pc_priv = {
                 "timeline": payload.get("timeline"),
                 "engineering_proof": payload.get("engineering_proof"),

@@ -486,6 +486,9 @@ def trigger_obh(context: str = None):
         # Export to current directory or a 'bundles' subdir
         import os
         os.makedirs("bundles", exist_ok=True)
+        # [NEW] Clear the episode manager so a new episode ID is generated for each triggered OBH
+        core.recognition.episodes.clear()
+        
         # Pass authority_scope_ref=None to simulate a user
         # This ensures the ProofCard V1.3 is generated safely with PC-Min only.
         res = core.obh_export("bundles", authority_scope_ref=None, byuse_context_ref=context)
@@ -499,15 +502,16 @@ def trigger_obh(context: str = None):
         return {"error": str(e)}
 
 @app.get("/obh/proofcard/{episode_id}")
-def retrieve_obh_bundle(episode_id: str, context: str = None):
+def retrieve_obh_bundle(episode_id: str, context: str = None, fields: str = None):
     """
     Retrieve an existing OBH bundle with dynamic BYUSE Context applied (CSR view).
+    If fields=pc_min is passed, strips out all massive payload arrays.
     """
     if not core:
         return {"error": "Core not initialized"}
     
     # CSRs always access via 'isp-support' scope
-    bundle = core.obh.retrieve_bundle(episode_id, byuse_context_ref=context, authority_scope_ref="isp-support")
+    bundle = core.obh.retrieve_bundle(episode_id, byuse_context_ref=context, authority_scope_ref="isp-support", fields=fields)
     if not bundle:
          return {"error": f"Episode {episode_id} not found."}
          
@@ -516,6 +520,31 @@ def retrieve_obh_bundle(episode_id: str, context: str = None):
          "episode_id": episode_id,
          "bundle": bundle
     }
+
+@app.get("/obh/history_summary")
+def get_obh_history_summary():
+    """
+    Get a lightweight summary list of all saved proof cards.
+    """
+    if not core:
+        return {"error": "Core not initialized"}
+    
+    summary_list = []
+    # Read directly from obh controller's saved cache
+    for ep_id, full_card in core.obh.saved_full_cards.items():
+        summary_list.append({
+            "episode_id": ep_id,
+            "profile_ref": getattr(full_card, 'profile_ref', 'UNKNOWN'),
+            "window_ref": getattr(full_card, 'window_ref', 'UNKNOWN'),
+            "verdict": getattr(full_card, 'primary_verdict', 'UNKNOWN'),
+            "time": getattr(full_card, 'data_range_end', ''),
+            "is_dispute": ep_id in core.obh.disputed_episodes,
+            "is_signed": ep_id in core.obh.signed_manifests
+        })
+    
+    # Sort descending by time (latest first)
+    sorted_list = sorted(summary_list, key=lambda x: str(x.get("time", "")), reverse=True)
+    return {"status": "Success", "history": sorted_list}
 
 from pydantic import BaseModel
 class SignManifestRequest(BaseModel):

@@ -98,9 +98,9 @@ class OBHCoreService:
         return self.obh.run(
             out_dir=out_dir,
             recognition=rec,
-            metrics=self.metrics_buf.snapshot(),
-            events=self.events_buf.snapshot(),
-            snapshots=self.snaps_buf.snapshot(),
+            metrics=self.metrics_buf.snapshot(500),
+            events=self.events_buf.snapshot(100),
+            snapshots=self.snaps_buf.snapshot(10),
             authority_scope_ref=authority_scope_ref,
             byuse_context_ref=byuse_context_ref
         )
