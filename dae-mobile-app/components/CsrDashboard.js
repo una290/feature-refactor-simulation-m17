@@ -106,12 +106,12 @@ export default function CsrDashboard({ onBack }) {
         if (pendingAuth) {
             interval = setInterval(() => {
                 handleSearch(reportContext, true);
-            }, 3000); // Poll every 3 seconds
+            }, 1000); // 縮短為每 1 秒輪詢一次
         }
         return () => {
             if (interval) clearInterval(interval);
         };
-    }, [pendingAuth, reportContext, searchQuery]);
+    }, [pendingAuth, reportContext, searchQuery, connectedIp]);
 
     const handleContextChange = (newContext) => {
         setReportContext(newContext);
@@ -193,12 +193,12 @@ export default function CsrDashboard({ onBack }) {
                                 <Text style={styles.blockerActionLabel}>Required to Proceed:</Text>
                                 <Text style={styles.blockerActionReq}>📝 {pcMin.upgrade_requirements_ref}</Text>
                                 <TouchableOpacity
-                                    style={[styles.blockerBtn, pendingAuth && { backgroundColor: '#9e9e9e' }]}
+                                    style={[styles.blockerBtn, pendingAuth && { backgroundColor: '#ffb300', borderColor: '#ff6f00', borderWidth: 1 }]}
                                     onPress={handleAuthRequest}
                                     disabled={pendingAuth}
                                 >
-                                    <Text style={styles.blockerBtnText}>
-                                        {pendingAuth ? "⏳ Request Sent, Waiting for User Authorization..." : "👉 Send Authorization Request to User"}
+                                    <Text style={[styles.blockerBtnText, pendingAuth && { color: '#3e2723' }]}>
+                                        {pendingAuth ? "⏳ Waiting for customer approval to unlock payload..." : "👉 Send Authorization Request to User"}
                                     </Text>
                                 </TouchableOpacity>
                             </View>
