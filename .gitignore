@@ -19,3 +19,7 @@ expo_log.txt
 bundles/
 cpe_metrics.db
 data/
+
+# Local Data/Logs
+audit_trail.jsonl
+saved_cards.pkl

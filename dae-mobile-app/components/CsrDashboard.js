@@ -1,8 +1,29 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, TextInput } from 'react-native';
-import { fetchOBHBundle, requestConsent } from '../src/api';
+
+// Standalone API Client for CSR Dashboard
+const csrFetchOBHBundle = async (ip, episodeId, context = null) => {
+    let url = `${ip}/obh/proofcard/${encodeURIComponent(episodeId)}`;
+    if (context) url += `?context=${encodeURIComponent(context)}`;
+    const response = await fetch(url);
+    return await response.json();
+};
+
+const csrRequestConsent = async (ip, episodeId, csrId = "8871") => {
+    const response = await fetch(`${ip}/api/obh/consent/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ episode_id: episodeId, csr_id: csrId })
+    });
+    return await response.json();
+};
 
 export default function CsrDashboard({ onBack }) {
+    const [ipAddress, setIpAddress] = useState('');
+    const [connectedIp, setConnectedIp] = useState(null);
+    const [isConnecting, setIsConnecting] = useState(false);
+    const [ipError, setIpError] = useState(null);
+
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
     const [activeTab, setActiveTab] = useState('pc-min'); // 'pc-min', 'pc-priv', 'raw'
@@ -13,8 +34,42 @@ export default function CsrDashboard({ onBack }) {
 
     const styles = useMemo(() => getStyles(fontScale), [fontScale]);
 
+    const handleConnect = async () => {
+        if (!ipAddress) return;
+        setIsConnecting(true);
+        setIpError(null);
+
+        let cleanIp = ipAddress.trim();
+        if (!cleanIp.startsWith('http://') && !cleanIp.startsWith('https://')) {
+            cleanIp = 'http://' + cleanIp;
+        }
+        if (cleanIp.endsWith('/')) {
+            cleanIp = cleanIp.slice(0, -1);
+        }
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            const response = await fetch(`${cleanIp}/`, { method: 'GET', signal: controller.signal });
+            clearTimeout(timeoutId);
+            // Even a 404 means the server is reachable and responding
+            if (response.ok || response.status === 404) {
+                setConnectedIp(cleanIp);
+            } else {
+                throw new Error(`Server block (${response.status})`);
+            }
+        } catch (e) {
+            let msg = e.message || 'Timeout or Network Error';
+            if (e.name === 'AbortError') msg = 'Connection Timed Out';
+            setIpError(`Failed: ${msg}`);
+            setConnectedIp(null);
+        } finally {
+            setIsConnecting(false);
+        }
+    };
+
     const handleSearch = async (context = reportContext, isPolling = false) => {
-        if (!searchQuery) return;
+        if (!searchQuery || !connectedIp) return;
         if (!isPolling) {
             setLoading(true);
             setActiveTab('pc-min');
@@ -22,7 +77,7 @@ export default function CsrDashboard({ onBack }) {
 
         try {
             const apiContext = context === 'default' ? null : context;
-            const data = await fetchOBHBundle(searchQuery.trim(), apiContext);
+            const data = await csrFetchOBHBundle(connectedIp, searchQuery.trim(), apiContext);
             if (!data || data.error) throw new Error(data?.error || "Failed to contact server.");
             setResult(data);
 
@@ -33,16 +88,16 @@ export default function CsrDashboard({ onBack }) {
             }
         } catch (err) {
             console.error(err);
-            if (!isPolling) setResult({ error: err.message || "Connection Failed." });
+            if (!isPolling) setResult({ error: err.message || "Retrieval Failed." });
         } finally {
             if (!isPolling) setLoading(false);
         }
     };
 
     const handleAuthRequest = async () => {
-        if (!result?.bundle?.pc_min?.episode_id) return;
+        if (!result?.bundle?.pc_min?.episode_id || !connectedIp) return;
         setPendingAuth(true);
-        await requestConsent(result.bundle.pc_min.episode_id);
+        await csrRequestConsent(connectedIp, result.bundle.pc_min.episode_id);
     };
 
     // Polling hook
@@ -392,8 +447,35 @@ export default function CsrDashboard({ onBack }) {
                         Assume the identity of a Customer Support Representative resolving an issue with a customer's device.
                     </Text>
 
+                    {/* Step 1: Connect to Device IP */}
                     <View style={styles.searchContainer}>
-                        <Text style={styles.searchLabel}>Retrieve Diagnostic Session</Text>
+                        <Text style={styles.searchLabel}>Step 1: Connect to Device IP</Text>
+                        <TextInput
+                            style={[styles.searchInput, { marginBottom: 10 }]}
+                            placeholder="e.g. 192.168.1.100:8000"
+                            value={ipAddress}
+                            onChangeText={(text) => { setIpAddress(text); setConnectedIp(null); setIpError(null); }}
+                            autoCorrect={false}
+                            autoCapitalize="none"
+                        />
+                        <TouchableOpacity
+                            style={[styles.idleContextBtn, { padding: 12, marginBottom: 10 }, isConnecting && { opacity: 0.7 }]}
+                            onPress={handleConnect}
+                            disabled={isConnecting}
+                        >
+                            {isConnecting ? (
+                                <ActivityIndicator color="#1565c0" />
+                            ) : (
+                                <Text style={[styles.idleContextBtnTitle, { fontSize: 16, marginBottom: 0 }]}>{connectedIp ? '✓ Connected' : 'Connect'}</Text>
+                            )}
+                        </TouchableOpacity>
+                        {ipError && <Text style={{ color: 'red', textAlign: 'center', marginBottom: 10 }}>{ipError}</Text>}
+                        {connectedIp && <Text style={{ color: '#2e7d32', textAlign: 'center', fontWeight: 'bold', marginBottom: 10 }}>Connected to {connectedIp}</Text>}
+                    </View>
+
+                    {/* Step 2: Retrieve Diagnostic Session */}
+                    <View style={[styles.searchContainer, !connectedIp && { opacity: 0.3 }]} pointerEvents={connectedIp ? 'auto' : 'none'}>
+                        <Text style={styles.searchLabel}>Step 2: Retrieve Diagnostic Session</Text>
                         <TextInput
                             style={styles.searchInput}
                             placeholder="Enter Episode ID (e.g. 550e8400...)"
