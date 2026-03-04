@@ -111,22 +111,22 @@ def get_metrics_history(limit: int = 20):
     """Get recent metrics history."""
     if not core:
         return []
-    all_metrics = core.metrics_buf.snapshot()
-    return all_metrics[-limit:]
+    all_metrics = core.metrics_buf.snapshot(limit)
+    return all_metrics
 
 @app.get("/events")
 def get_events():
     """Get recent change events."""
     if not core:
         return []
-    return core.events_buf.snapshot()
+    return core.events_buf.snapshot(50)
 
 @app.get("/snapshots")
 def get_snapshots():
     """Get recent snapshots."""
     if not core:
         return []
-    return core.snaps_buf.snapshot()
+    return core.snaps_buf.snapshot(50)
 
 @app.get("/recognition")
 def get_recognition():
@@ -146,8 +146,8 @@ def get_install_verify():
     if not core:
         return {"error": "Core not initialized"}
     
-    # Get all available metrics from the buffer to form the window
-    metrics_snapshot = core.metrics_buf.snapshot()
+    # Get all available metrics for verification window (3 min default)
+    metrics_snapshot = core.metrics_buf.snapshot(180)
     
     # Get Internals for C01/C06 display
     ws, wl = core.windowing.current_refs()
@@ -265,7 +265,7 @@ def _get_mock_fleet():
         local_status = calculate_simple_status(core)
         
         # authoritative verify logic
-        snaps = core.metrics_buf.snapshot()
+        snaps = core.metrics_buf.snapshot(180)
         v_result = verify_install(snaps)
         
         closure = "READY" if v_result.closure_readiness == "ready" else "NOT_READY"
@@ -331,7 +331,7 @@ def get_device_detail(device_id: str):
         v_result = None
         
         if core:
-            snaps = core.snaps_buf.snapshot()
+            snaps = core.snaps_buf.snapshot(20)
             # Convert to simplified format for UI
             formatted_snaps = []
             for s in snaps[-5:]: # Last 5
@@ -345,7 +345,7 @@ def get_device_detail(device_id: str):
             snapshots = formatted_snaps
             
             # Run verification for detail
-            m_snaps = core.metrics_buf.snapshot()
+            m_snaps = core.metrics_buf.snapshot(180)
             v_result = verify_install(m_snaps)
         
         if not snapshots:
@@ -427,7 +427,7 @@ def get_device_proof(device_id: str, profile: str = "WIFI78_INSTALL_ACCEPT"):
         
     # Get current Window (last N minutes or samples)
     # For sim, we take the last 100 samples
-    metrics = core.metrics_buf.snapshot()[-100:] 
+    metrics = core.metrics_buf.snapshot(100) 
     
     # Convert dataclasses to dicts for M13 processing
     from dataclasses import asdict, is_dataclass

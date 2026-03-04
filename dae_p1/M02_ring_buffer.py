@@ -20,7 +20,9 @@ class RingBuffer(Generic[T]):
     def append(self, item: T) -> None:
         self._dq.append(item)
 
-    def snapshot(self) -> List[T]:
+    def snapshot(self, limit: int = None) -> List[T]:
+        if limit is not None:
+            return list(self._dq)[-limit:]
         return list(self._dq)
 
     def last(self) -> Optional[T]:
@@ -99,10 +101,13 @@ class SQLiteRingBuffer(Generic[T]):
                 """, (diff,))
             conn.commit()
 
-    def snapshot(self) -> List[T]:
+    def snapshot(self, limit: int = None) -> List[T]:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute(f"SELECT data FROM {self.table_name} ORDER BY id ASC")
+            if limit is not None:
+                cursor.execute(f"SELECT data FROM (SELECT id, data FROM {self.table_name} ORDER BY id DESC LIMIT ?) ORDER BY id ASC", (limit,))
+            else:
+                cursor.execute(f"SELECT data FROM {self.table_name} ORDER BY id ASC")
             rows = cursor.fetchall()
             return [self._deserialize(r[0]) for r in rows]
 
