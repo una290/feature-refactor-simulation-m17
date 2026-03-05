@@ -24,8 +24,8 @@ const ProofCardList = ({ onNavigateToMin, onBack }) => {
             <TouchableOpacity style={styles.card} onPress={() => onNavigateToMin(item.episode_id)}>
                 <View style={styles.row}>
                     <Text style={styles.idText}>{item.episode_id}</Text>
-                    <Text style={[styles.verdictText, { color: item.verdict === 'PASS' ? '#2e7d32' : (item.verdict === 'FAIL' ? '#c62828' : '#e65100') }]}>
-                        {item.verdict || 'UNKNOWN'}
+                    <Text style={[styles.verdictText, { color: (item.status || item.verdict) === 'PASS' || (item.status || item.verdict) === 'READY' ? '#2e7d32' : ((item.status || item.verdict) === 'FAIL' ? '#c62828' : '#e65100') }]}>
+                        {item.status || item.verdict || 'UNKNOWN'}
                     </Text>
                 </View>
                 <View style={[styles.row, { marginTop: 8 }]}>

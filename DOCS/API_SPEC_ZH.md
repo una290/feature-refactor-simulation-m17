@@ -48,7 +48,7 @@
   ```json
   {
     "episode_id": "ep-xxxx",
-    "primary_verdict": "WIFI_CONGESTION",  // 判定結果
+    "diagnosis_code": "WIFI_CONGESTION",  // 判定結果
     "confidence": 0.95,
     "evidence_refs": ["S-100", "E-200"],
     "observability": { "observability_status": "SUFFICIENT", "opaque_risk": false }
@@ -118,7 +118,7 @@
     "episode_id": "ep-xxxx",
     "bundle": {
       "evidence_grade": "CLOSURE_GRADE", 
-      "pc_min": { "verdict": "WIFI_CONGESTION", ... },
+      "pc_min": { "status": "FAIL", "diagnosis_code": "WIFI_CONGESTION", ... },
       "pc_priv": { "timeline": {...} }  // 如果 user 未授權或 context 不符，此欄位為 null !
     }
   }
@@ -148,6 +148,8 @@
         "profile_ref": "WIFI78_INSTALL_ACCEPT",
         "window_ref": "W-LATEST-100",
         "verdict": "FAIL",
+        "status": "FAIL",
+        "diagnosis_code": "UNKNOWN",
         "time": "2023-10-27T10:00:00Z",
         "is_dispute": true,
         "is_signed": false

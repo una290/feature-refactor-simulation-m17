@@ -302,7 +302,7 @@ class ProofCardGenerator:
             episode_id=ep_id,
             episode_start=time.time(),
             worst_window_ref=window_ref_str,
-            primary_verdict="UNKNOWN",
+            diagnosis_code="UNKNOWN",
             confidence=1.0,
             evidence_refs=[],
             observability=ObservabilityResult("SUFFICIENT", False)
@@ -317,10 +317,6 @@ class ProofCardGenerator:
         # 3. Generate Engineering Stats
         eng_card = self._generate_engineering_stats(window_data, profile_ref, window_ref_str, manifest_ref_str, events)
         
-        primary_verdict = eng_card.get("verdict", "UNKNOWN")
-        if not is_valid:
-            primary_verdict = "NOT_READY"
-        
         # Combine Timeline + Eng Stats into 'Frozen Data Payload'
         payload = {
             "timeline": timeline,
@@ -332,7 +328,9 @@ class ProofCardGenerator:
         pc = ProofCard(
             episode_id=dummy_rec.episode_id,
             window_ref=window_ref_str,
-            primary_verdict=primary_verdict,
+            status=eng_card.get("status", "UNKNOWN"),
+            diagnosis_code=eng_card.get("diagnosis_code", "UNKNOWN"),
+            validity_grade="DELIVERY_GRADE", # Will be updated by M22 eval
             missing_evidence_class=missing_classes,
             egress_receipt_ref=None,
             byuse_context_ref=byuse_context_ref,
@@ -341,6 +339,12 @@ class ProofCardGenerator:
             refs=refs,
             payload=payload
         )
+        
+        # Attach policy validity without disrupting original status
+        if not is_valid:
+            pc.refs["policy_valid"] = False
+        else:
+            pc.refs["policy_valid"] = True
         
         return pc
 
@@ -408,7 +412,7 @@ class ProofCardGenerator:
         # Extract reasons from failed checks
         reasons = [r.reason_code for r in check_results if r.status == "FAIL" and r.reason_code]
         
-        verdict = "NOT_READY" if reasons else "READY"
+        status = "NOT_READY" if reasons else "READY"
         if not reasons: reasons = [ReasonCode.PASSED_ALL_CHECKS]
 
         # 5. Build Facets
@@ -417,7 +421,7 @@ class ProofCardGenerator:
 
         p50_out = to_kv(p50_map, "p50")
         p95_out = to_kv(p95_map, "p95")
-        outcome_out = p95_out if verdict != "READY" else p50_out
+        outcome_out = p95_out if status != "READY" else p50_out
         if not outcome_out: outcome_out = [{"name": "no_metric_data", "value": 0, "unit": "none"}]
 
         # 5.1 Extract Event Types
@@ -432,24 +436,36 @@ class ProofCardGenerator:
             event_types.sort()
 
         return self._build_card(
-            card_id, profile_ref, verdict, window_ref_str, reasons, n,
-            p50_out, p95_out, outcome_out, manifest_ref_str, "VALID",
-            event_types, check_results
+            cid=card_id, 
+            pref=profile_ref, 
+            status=status,
+            diagnosis="WIFI_CONGESTION" if "WIFI_SIDE_OSCILLATION" in reasons else "UNKNOWN", # Mock logic, should be improved
+            wref=window_ref_str, 
+            reasons=reasons, 
+            n=n,
+            p50=p50_out, 
+            p95=p95_out, 
+            outcome=outcome_out, 
+            mref=manifest_ref_str, 
+            validity="VALID",
+            event_types=event_types, 
+            check_results=check_results
         )
         
-    def _build_card(self, cid, pref, verdict, wref, reasons, n, p50, p95, outcome, mref, validity="VALID", event_types=None, check_results=None):
+    def _build_card(self, cid, pref, status, diagnosis, wref, reasons, n, p50, p95, outcome, mref, validity="VALID", event_types=None, check_results=None):
         if event_types is None: event_types = []
         if check_results is None: check_results = []
         
         return {
             "proof_card_ref": cid,
             "profile_ref": pref,
-            "verdict": verdict,
+            "status": status,
+            "diagnosis_code": diagnosis,
             "window_ref": wref,
             "reason_code": reasons,
             "health_checks": [asdict(r) for r in check_results], # New Field
             "enforcement_path_ref": "EP-DEFAULT-01",
-            "authority_scope_ref": "SCOPE-CPE-LOCAL",
+            "issuer": "CPE", # Replaces authority_scope_ref
             "validity_horizon_ref": "7DAYS",
             "validity_verdict": validity,
             "basis_ref": "BASIS-V1.3",

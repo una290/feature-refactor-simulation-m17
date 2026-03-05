@@ -536,7 +536,9 @@ def get_obh_history_summary():
             "episode_id": ep_id,
             "profile_ref": getattr(full_card, 'profile_ref', 'UNKNOWN'),
             "window_ref": getattr(full_card, 'window_ref', 'UNKNOWN'),
-            "verdict": getattr(full_card, 'primary_verdict', 'UNKNOWN'),
+            "verdict": getattr(full_card, 'status', 'UNKNOWN'), # Legacy 
+            "status": getattr(full_card, 'status', 'UNKNOWN'),
+            "diagnosis_code": getattr(full_card, 'diagnosis_code', 'UNKNOWN'),
             "time": getattr(full_card, 'data_range_end', ''),
             "is_dispute": ep_id in core.obh.disputed_episodes,
             "is_signed": ep_id in core.obh.signed_manifests

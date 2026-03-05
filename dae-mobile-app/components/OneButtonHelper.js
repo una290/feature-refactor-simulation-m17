@@ -112,8 +112,9 @@ export default function OneButtonHelper({ onBack }) {
         if (!bundle || !bundle.pc_min) return <Text style={{ padding: 20 }}>No ProofCard Data Found</Text>;
         const pcMin = bundle.pc_min;
 
-        const isReady = pcMin.verdict === 'READY';
-        const finalVerdict = pcMin.verdict || 'UNKNOWN';
+        const isReady = pcMin.status === 'READY' || pcMin.verdict === 'READY';
+        const finalStatus = pcMin.status || pcMin.verdict || 'UNKNOWN';
+        const diagnosisCode = pcMin.diagnosis_code || 'UNKNOWN';
         const grade = pcMin.evidence_grade || 'UNKNOWN';
 
         const hasPrivacyMissing = pcMin.missing_evidence_class && pcMin.missing_evidence_class.length > 0;
@@ -147,9 +148,9 @@ export default function OneButtonHelper({ onBack }) {
                 <Text style={[styles.sectionHeader, { marginTop: 20 }]}>DIAGNOSTIC OVERVIEW (PC-Min)</Text>
 
                 <UnifiedHealthCard
-                    title="Network Diagnosis"
-                    status={finalVerdict}
-                    subtext={isReady ? "Connection is stable" : "Issues detected"}
+                    title="Network Status"
+                    status={finalStatus}
+                    subtext={isReady ? "Connection is stable" : `Diagnosis: ${diagnosisCode}`}
                     fontScale={fontScale}
                 />
 

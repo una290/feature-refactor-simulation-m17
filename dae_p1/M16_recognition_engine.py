@@ -38,7 +38,7 @@ class RecognitionEngine:
             episode_id=ep.episode_id,
             episode_start=ep.start_ts,
             worst_window_ref=ep.worst_window_ref,
-            primary_verdict=verdict,
+            diagnosis_code=verdict,
             confidence=conf,
             evidence_refs=ep.evidence_refs[-10:],  # cap
             observability=obs_res

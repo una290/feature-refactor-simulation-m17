@@ -100,7 +100,9 @@ class ProofCard:
     window_ref: str
     
     # --- 2. Verdict State ---
-    primary_verdict: str
+    status: str
+    diagnosis_code: str
+    validity_grade: str = "UNKNOWN"
     
     # --- 3. Governance Basis ---
     missing_evidence_class: List[str] = field(default_factory=list)
@@ -199,7 +201,7 @@ class EpisodeRecognition:
     episode_id: str
     episode_start: float
     worst_window_ref: str
-    primary_verdict: Verdict
+    diagnosis_code: Verdict
     confidence: float
     evidence_refs: List[str]
     observability: ObservabilityResult

@@ -52,8 +52,9 @@ export default function ProofCard({ deviceId, onBack }) {
     if (error) return <Text style={{ marginTop: 50, textAlign: 'center', color: 'red' }}>Error: {error}</Text>;
     if (!proof) return <Text style={{ marginTop: 50, textAlign: 'center' }}>Failed to generate proof.</Text>;
 
-    const isReady = proof.verdict === 'READY';
-    const verdictColor = isReady ? '#2e7d32' : (proof.verdict === 'INSUFFICIENT_EVIDENCE' ? '#f57f17' : '#c62828');
+    const isReady = proof.status === 'READY' || proof.verdict === 'READY';
+    const finalStatus = proof.status || proof.verdict || 'UNKNOWN';
+    const verdictColor = isReady ? '#2e7d32' : (finalStatus === 'INSUFFICIENT_EVIDENCE' ? '#f57f17' : '#c62828');
 
     // Helper to render stats
     const renderStat = (stats) => {
@@ -109,10 +110,15 @@ export default function ProofCard({ deviceId, onBack }) {
                     <View style={styles.divider} />
 
                     <View style={styles.resultBox}>
-                        <Text style={styles.label}>Compliance Verdict</Text>
+                        <Text style={styles.label}>Network Status</Text>
                         <Text style={[styles.verdict, { color: verdictColor }]}>
-                            {proof.verdict}
+                            {finalStatus}
                         </Text>
+                        {proof.diagnosis_code && (
+                            <Text style={styles.subVerdict}>
+                                Diagnosis: {proof.diagnosis_code}
+                            </Text>
+                        )}
                         <Text style={styles.subVerdict}>
                             Reasons: {proof.reason_code ? proof.reason_code.join(", ") : "None"}
                         </Text>

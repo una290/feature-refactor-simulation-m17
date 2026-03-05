@@ -113,7 +113,8 @@ class OBHController:
         # Extract/Embed Logic based on Privacy
         # Assembling PC-Min (Always Safe / External View)
         pc_min = {
-            "verdict": projected_card_dict.get("primary_verdict"),
+            "status": projected_card_dict.get("status"),
+            "diagnosis_code": projected_card_dict.get("diagnosis_code"),
             "evidence_grade": evidence_grade,
             "episode_id": projected_card_dict.get("episode_id"),
             "window_ref": projected_card_dict.get("window_ref"),
@@ -205,7 +206,8 @@ class OBHController:
         }
         
         pc_min = {
-            "verdict": projected_card_dict.get("primary_verdict"),
+            "status": projected_card_dict.get("status"),
+            "diagnosis_code": projected_card_dict.get("diagnosis_code"),
             "evidence_grade": evidence_grade,
             "episode_id": projected_card_dict.get("episode_id"),
             "window_ref": projected_card_dict.get("window_ref"),
