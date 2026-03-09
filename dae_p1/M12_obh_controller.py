@@ -95,21 +95,17 @@ class OBHController:
         is_signed = recognition.episode_id in self.signed_manifests
         evidence_grade, upgrade_req = self.governance.evaluate_closure_grade(projected_card_dict, byuse_context_ref, is_signed=is_signed)
         
-        # 4. Assemble Final Bundle Dict
-        bundle = {
-            "spec": "DAE_P1_Priv_v2_CapabilityBased",
-            "proof_card": _safe_serialize(projected_card_dict),
-            "evidence_grade": evidence_grade,
-            "upgrade_requirements_ref": upgrade_req
-        }
-        
         # [NEW] Enforce Egress Gate on Payload
         is_dispute = byuse_context_ref and "dispute" in byuse_context_ref
-        if not is_dispute or evidence_grade == "NOT_CLOSURE_GRADE":
-            # Strip Sensitive Payload (Eqv to PC-Min output only)
-            projected_card_dict["payload"] = None
-            projected_card_dict["egress_receipt_ref"] = None
         
+        # We need the payload to build pc_priv and pc_min
+        payload = projected_card_dict.get("payload")
+        
+        # Determine if we should strip for pc_priv generation
+        should_strip = False
+        if not is_dispute or evidence_grade == "NOT_CLOSURE_GRADE":
+            should_strip = True
+            
         # Extract/Embed Logic based on Privacy
         # Assembling PC-Min (Always Safe / External View)
         pc_min = {
@@ -125,8 +121,7 @@ class OBHController:
             "egress_receipt_ref": projected_card_dict.get("egress_receipt_ref")
         }
         
-        payload = projected_card_dict.get("payload")
-        if payload:
+        if payload and not should_strip:
             # We have full view access, assemble PC-Priv
             pc_priv = {
                 "timeline": payload.get("timeline"),
@@ -140,9 +135,23 @@ class OBHController:
             pc_min.update(eng_proof)
         else:
             pc_priv = None
-            
-        bundle["pc_min"] = pc_min
-        bundle["pc_priv"] = pc_priv
+            if payload:
+                # Still merge engineering_proof to pc_min even if stripped
+                eng_proof = payload.get("engineering_proof", {})
+                pc_min.update(eng_proof)
+
+        # [OPTION 1 FIX] ALWAYS strip payload from the generic proof_card to avoid duplication!
+        projected_card_dict["payload"] = None
+
+        # 4. Assemble Final Bundle Dict
+        bundle = {
+            "spec": "DAE_P1_Priv_v2_CapabilityBased",
+            "proof_card": _safe_serialize(projected_card_dict),
+            "evidence_grade": evidence_grade,
+            "upgrade_requirements_ref": upgrade_req,
+            "pc_min": pc_min,
+            "pc_priv": pc_priv
+        }
         
         path = self.exporter.export(out_dir, recognition.episode_id, bundle)
         
@@ -195,16 +204,8 @@ class OBHController:
         payload = projected_card_dict.get("payload")
         
         if should_strip:
-            projected_card_dict["payload"] = None
             projected_card_dict["egress_receipt_ref"] = None
 
-        bundle = {
-            "spec": "DAE_P1_Priv_v2_CapabilityBased",
-            "proof_card": _safe_serialize(projected_card_dict),
-            "evidence_grade": evidence_grade,
-            "upgrade_requirements_ref": upgrade_req
-        }
-        
         pc_min = {
             "status": projected_card_dict.get("status"),
             "diagnosis_code": projected_card_dict.get("diagnosis_code"),
@@ -229,8 +230,20 @@ class OBHController:
             pc_min.update(eng_proof)
         else:
             pc_priv = None
-            
-        bundle["pc_min"] = pc_min
-        bundle["pc_priv"] = pc_priv
+            if payload:
+                eng_proof = payload.get("engineering_proof", {})
+                pc_min.update(eng_proof)
+
+        # [OPTION 1 FIX] ALWAYS strip payload from the generic proof_card to avoid duplication!
+        projected_card_dict["payload"] = None
+
+        bundle = {
+            "spec": "DAE_P1_Priv_v2_CapabilityBased",
+            "proof_card": _safe_serialize(projected_card_dict),
+            "evidence_grade": evidence_grade,
+            "upgrade_requirements_ref": upgrade_req,
+            "pc_min": pc_min,
+            "pc_priv": pc_priv
+        }
         
         return _safe_serialize(bundle)

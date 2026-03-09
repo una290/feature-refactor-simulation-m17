@@ -10,16 +10,21 @@ dummy_rec = EpisodeRecognition(
     episode_id=f"ep-{uuid.uuid4().hex[:8]}",
     episode_start=time.time(),
     worst_window_ref="W-LATEST",
-    primary_verdict="UNKNOWN",
+    diagnosis_code="UNKNOWN",
     confidence=1.0,
     evidence_refs=[],
     observability=ObservabilityResult("SUFFICIENT", False)
 )
 
 gen = ProofCardGenerator()
-metrics = [{"ts": time.time(), "latency_ms": 50, "loss_pct": 0}] * 10
-card = gen.generate(metrics, [], [])
-print("Primary Verdict:", card.primary_verdict)
+metrics = [{"ts": time.time(), "latency_ms": 50, "loss_pct": 0, "rtt_ms": 50}] * 10
+card = gen.generate(
+    metrics=metrics,
+    events=[],
+    snapshots=[],
+    profile_ref="WIFI78_INSTALL_ACCEPT"
+)
+print("Status:", card.status)
 print("Missing:", card.missing_evidence_class)
 print("Payload exists:", card.payload is not None)
 

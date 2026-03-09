@@ -359,7 +359,8 @@ class ProofCardGenerator:
         # 1. Sample Count Check
         n = len(window_data)
         if n < profile.MIN_SAMPLES:
-            return self._build_card(card_id, profile_ref, "INSUFFICIENT_EVIDENCE", 
+            return self._build_card(card_id, profile_ref, "INSUFFICIENT_EVIDENCE",
+                                    "UNKNOWN", # diagnosis
                                     window_ref_str, ["INSUFFICIENT_SAMPLES"], 
                                     n, [], [], 
                                     [{"name": "sample_count", "value": n, "unit": "count"}], 
@@ -378,7 +379,7 @@ class ProofCardGenerator:
             return vals
 
         vectors = {
-            "rtt_ms": extract("latency_p95_ms") or extract("latency_ms"),
+            "rtt_ms": extract("latency_p95_ms") or extract("rtt_ms") or extract("latency_ms"),
             "loss_pct": extract("loss_pct") or extract("loss_percent"),
             "us_rtt_ms": extract("us_latency_p95_ms"),
             "us_loss_pct": extract("us_loss_pct"),

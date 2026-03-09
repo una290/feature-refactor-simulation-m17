@@ -44,26 +44,41 @@ class TestProofCardV13(unittest.TestCase):
         gen = ProofCardGenerator()
         
         # Mocking window data. Generator extracts 'latency_ms' or 'rtt'.
-        data = [{"rtt": x} for x in [20, 22, 21, 23, 24, 25, 26, 28, 30, 40, 80, 120]]
+        data = [{"rtt_ms": x} for x in [20, 22, 21, 23, 24, 25, 26, 28, 30, 40, 80, 120]]
         
-        card = gen.generate(data, "WIFI78_INSTALL_ACCEPT", "W-SIM-1")
+        card = gen.generate(
+            metrics=data,
+            events=[],
+            snapshots=[],
+            profile_ref="WIFI78_INSTALL_ACCEPT",
+            window_ref_str="W-SIM-1"
+        )
         
-        self.assertEqual(card["verdict"], "NOT_READY")
-        self.assertIn("P95_RTT_TOO_HIGH", card["reason_code"])
-        self.assertEqual(card["sample_count"], 12)
+        self.assertEqual(card.status, "NOT_READY")
+        # card.payload contains engineering_proof which has the old fields
+        eng_proof = card.payload["engineering_proof"]
+        self.assertIn("P95_RTT_TOO_HIGH", eng_proof["reason_code"])
+        self.assertEqual(eng_proof["sample_count"], 12)
         
         # Verify p95 output structure
-        p95_rtt = next((x for x in card["p95"] if x["name"] == "rtt_ms_p95"), None)
+        p95_rtt = next((x for x in eng_proof["p95"] if x["name"] == "rtt_ms_p95"), None)
         self.assertIsNotNone(p95_rtt)
         self.assertEqual(p95_rtt["value"], 120)
 
     def test_verdict_logic_insufficient(self):
         gen = ProofCardGenerator()
-        data = [{"rtt": 10}] * 5 # Only 5 samples
+        data = [{"rtt_ms": 10}] * 5 # Only 5 samples
         
-        card = gen.generate(data, "WIFI78_INSTALL_ACCEPT", "W-SMALL")
-        self.assertEqual(card["verdict"], "INSUFFICIENT_EVIDENCE")
-        self.assertIn("INSUFFICIENT_SAMPLES", card["reason_code"])
+        card = gen.generate(
+            metrics=data,
+            events=[],
+            snapshots=[],
+            profile_ref="WIFI78_INSTALL_ACCEPT",
+            window_ref_str="W-SMALL"
+        )
+        self.assertEqual(card.status, "INSUFFICIENT_EVIDENCE")
+        eng_proof = card.payload["engineering_proof"]
+        self.assertIn("INSUFFICIENT_SAMPLES", eng_proof["reason_code"])
 
 if __name__ == '__main__':
     unittest.main()
