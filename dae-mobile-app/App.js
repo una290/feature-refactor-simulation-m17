@@ -12,6 +12,7 @@ import DeviceDrilldown from './components/DeviceDrilldown';
 import ProofCard from './components/ProofCard';
 import ProofCardList from './components/ProofCardList';
 import HistoricalProofCard from './components/HistoricalProofCard';
+import DomainConfig from './components/DomainConfig';
 
 import IpConfigScreen from './components/IpConfigScreen';
 import CsrDashboard from './components/CsrDashboard';
@@ -56,6 +57,8 @@ export default function App() {
     } else if (currentScreen === 'CSR_DASHBOARD') {
       setCurrentScreen('SETTINGS');
     } else if (currentScreen === 'SIMULATE') {
+      setCurrentScreen('SETTINGS');
+    } else if (currentScreen === 'DOMAIN_OVERRIDE') {
       setCurrentScreen('SETTINGS');
     } else {
       // Default back to Home
@@ -191,6 +194,10 @@ export default function App() {
 
       {currentScreen === 'CSR_DASHBOARD' && (
         <CsrDashboard onBack={navigateBack} />
+      )}
+
+      {currentScreen === 'DOMAIN_OVERRIDE' && (
+        <DomainConfig onBack={navigateBack} />
       )}
 
       {currentScreen === 'FLEET' && (

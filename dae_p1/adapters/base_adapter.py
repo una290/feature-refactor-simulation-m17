@@ -10,6 +10,10 @@ class DomainAdapter(ABC):
     Adapters MUST ONLY collect observations and emit standardized artifacts.
     Adapters MUST NOT implement verdict logic, remediation guidance, or control actions.
     """
+    @property
+    def domain(self) -> str:
+        return "UNKNOWN"
+
     @abstractmethod
     def collect_metric_sample(self) -> MetricSample:
         """Collect a metadata-only metric sample mapped to MetricSample."""

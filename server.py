@@ -287,11 +287,11 @@ def _get_mock_fleet():
         "feature_deltas": ["BandSteering: OFF"] if local_status == "unstable" else []
     }
 
-    # Mock Devices
+    # Mock Devices (Proposal 2: The Fleet View Context Mocks)
     mock_devices = [
         {
-            "id": "mock_1",
-            "name": "Living Room Mesh",
+            "id": "mock_wifi",
+            "name": "Customer Router (WiFi)",
             "current_state": "suspected",
             "primary_issue_class": "Backhaul Flapping",
             "closure_readiness": "NOT_READY",
@@ -299,8 +299,8 @@ def _get_mock_fleet():
             "feature_deltas": ["DFS: Frozen"]
         },
         {
-            "id": "mock_2",
-            "name": "Bedroom Extender",
+            "id": "mock_cable",
+            "name": "Edge Modem (DOCSIS)",
             "current_state": "ok",
             "primary_issue_class": "None",
             "closure_readiness": "READY",
@@ -379,10 +379,10 @@ def get_device_detail(device_id: str):
             }
         }
 
-    # Mock Device 1 (Suspected)
-    elif device_id == "mock_1":
+    # Mock Device 1 (WiFi Context Demo)
+    elif device_id == "mock_wifi":
         return {
-            "id": "mock_1",
+            "id": "mock_wifi",
             "obh_snapshot_timeline": [
                 {"ref": "S-800", "type": "post-install", "time": 800},
                 {"ref": "S-1200", "type": "pre-incident", "time": 1200},
@@ -402,6 +402,27 @@ def get_device_detail(device_id: str):
             }
         }
         
+    # Mock Device 2 (Cable Context Demo)
+    elif device_id == "mock_cable":
+        return {
+            "id": "mock_cable",
+            "obh_snapshot_timeline": [
+                {"ref": "S-500", "type": "post-install", "time": 500},
+                {"ref": "S-3600", "type": "periodic", "time": 3600}
+            ],
+            "cohort_compare": {
+                "status": "normal",
+                "message": "SNR behaves expectedly within DOCSIS parameters"
+            },
+            "feature_ledger": [
+                 {"feature": "OFDMA", "state": "ACTIVE", "reason": "Standard provisioning", "ttl": None}
+            ],
+            "compliance_verdict": {
+                "result": "PASS",
+                "evidence_missing": []
+            }
+        }
+        
     # Default Mock
     return {
          "id": device_id,
@@ -414,24 +435,67 @@ def get_device_detail(device_id: str):
 # --- NEW V1.3 API ---
 
 @app.get("/device/{device_id}/proof")
-def get_device_proof(device_id: str, profile: str = "WIFI78_INSTALL_ACCEPT"):
+def get_device_proof(device_id: str, profile: str = None):
     """
     Get the Proof Card V1.3 for this device.
-    Defaults to WIFI78_INSTALL_ACCEPT profile.
+    Automatically infers profile (WIFI vs CABLE) if not provided.
     """
-    if device_id != "local":
-        return {"error": "Only local device implemented for V1.3 ProofCard"}
+    if device_id not in ["local", "mock_wifi", "mock_cable"]:
+        return {"error": "Only local and explicitly mocked V1.3 properties supported right now"}
     
     if not core:
         return {"error": "Core not initialized"}
         
     # Get current Window (last N minutes or samples)
     # For sim, we take the last 100 samples
-    metrics = core.metrics_buf.snapshot(100) 
+    metrics = core.metrics_buf.snapshot(100)
+    
+    # We allow mock devices to generate ProofCards by bypassing the real-data check for demo purposes
+    if device_id in ["mock_wifi", "mock_cable"]:
+         # Create robust 20-sample histories so M13 Profile logic doesn't reject as INSUFFICIENT
+         from dae_p1.M00_common import MetricSample
+         import time
+         import random
+         
+         metrics = []
+         now = time.time()
+         for i in range(20):
+             ts_val = now - (20 - i) * 60
+             if device_id == "mock_cable":
+                 metrics.append(MetricSample(
+                     ts=ts_val, window_ref="W-MOCK", domain="CABLE",
+                     us_latency_p95_ms=random.uniform(20, 60),
+                     ofdm_mer_db=random.uniform(32.5, 38.0),
+                     t3_count=random.randint(0, 2),
+                     fec_corrected=random.randint(10, 100),
+                     in_rate=random.uniform(500, 1000)
+                 ))
+             else:
+                 metrics.append(MetricSample(
+                     ts=ts_val, window_ref="W-MOCK", domain="WIFI",
+                     latency_p95_ms=random.uniform(10, 30),
+                     retry_pct=random.uniform(1.0, 8.0),
+                     signal_strength_pct=random.randint(70, 99),
+                     mesh_flap_count=random.randint(0, 1)
+                 )) 
     
     # Convert dataclasses to dicts for M13 processing
     from dataclasses import asdict, is_dataclass
     metrics_dicts = [asdict(m) if is_dataclass(m) else m for m in metrics]
+
+    if not profile:
+        # Auto-infer profile from the latest sample
+        domain = "WIFI"
+        
+        # Proposal 2 overrides for Fleet View mocks
+        if device_id == "mock_cable":
+             domain = "CABLE"
+        elif device_id == "mock_wifi":
+             domain = "WIFI"
+        elif metrics_dicts:
+            domain = metrics_dicts[-1].get("domain", "WIFI")
+            
+        profile = "CABLE_INSTALL_ACCEPT" if domain == "CABLE" else "WIFI78_INSTALL_ACCEPT"
 
     # Get Manifest Ref
     manifest = manifest_manager.get_manifest(device_id)
@@ -439,7 +503,7 @@ def get_device_proof(device_id: str, profile: str = "WIFI78_INSTALL_ACCEPT"):
 
     # Generate
     try:
-        card = pc_generator.generate(metrics_dicts, profile, window_ref_str="W-LATEST-100", manifest_ref_str=manifest_ref)
+        card = pc_generator.generate(metrics_dicts, [], [], profile_ref=profile, window_ref_str="W-LATEST-100", manifest_ref_str=manifest_ref)
         return card
     except Exception as e:
         return {"error": f"Proof Generation Failed: {e}"}
@@ -455,10 +519,11 @@ def get_device_manifest(device_id: str):
     return manifest_manager.get_manifest(device_id)
 
 @app.post("/simulate/incident")
-def simulate_incident(type: str = "latency", duration: int = 30):
+def simulate_incident(type: str = "latency", duration: int = 30, domain: str = None):
     """
     Simulate an incident by injecting bad metrics into the adapter.
     Type can be: latency, retry, airtime, complex.
+    Now supports domain override for Context Switching demo.
     """
     if not core:
         return {"error": "Core not initialized"}
@@ -469,6 +534,11 @@ def simulate_incident(type: str = "latency", duration: int = 30):
     if type in ["latency", "retry", "airtime", "complex", "stable", "oscillating", "degrading"]:
         # New simplified logic: Delegate to M17 via adapter
         core.adapter.overrides['simulation_type'] = {"value": type, "until": until, "start": time.time()}
+        
+        # Proposal 1: The Environment Switch (Demo Override)
+        if domain in ["WIFI", "CABLE"]:
+             core.adapter.overrides['domain'] = {"value": domain, "until": until}
+             
     else:
         return {"error": "Unknown incident type"}
         

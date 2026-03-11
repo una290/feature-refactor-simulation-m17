@@ -12,6 +12,7 @@ class MetricsCollector:
         self.windowing = windowing
 
     def collect(self,
+                domain: Optional[str]="WIFI",
                 latency_p95_ms: Optional[float]=None,
                 loss_pct: Optional[float]=None,
                 retry_pct: Optional[float]=None,
@@ -38,7 +39,7 @@ class MetricsCollector:
         ts = now_ts()
         ws = self.windowing.window_ref(ts, "Ws")
         return MetricSample(
-            ts=ts, window_ref=ws,
+            ts=ts, window_ref=ws, domain=domain,
             latency_p95_ms=latency_p95_ms, loss_pct=loss_pct,
             retry_pct=retry_pct, airtime_busy_pct=airtime_busy_pct,
             roam_count=roam_count, mesh_flap_count=mesh_flap_count,

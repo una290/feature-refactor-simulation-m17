@@ -18,6 +18,12 @@ class WindowsWifiAdapter(DomainAdapter):
     - Network Rates via psutil
     - Signal Quality via netsh (subprocess)
     """
+    @property
+    def domain(self) -> str:
+        if hasattr(self, 'overrides') and 'domain' in self.overrides:
+            return self.overrides['domain']['value']
+        return "WIFI"
+
     def __init__(self):
         self.windowing = Windowing()
         self.collector = MetricsCollector(self.windowing)
@@ -196,6 +202,7 @@ class WindowsWifiAdapter(DomainAdapter):
             return default
 
         ms = self.collector.collect(
+            domain=self.domain,
             latency_p95_ms=get_val('latency_p95_ms', lat),
             retry_pct=get_val('retry_pct', 0.0),
             airtime_busy_pct=get_val('airtime_busy_pct', 0.0),

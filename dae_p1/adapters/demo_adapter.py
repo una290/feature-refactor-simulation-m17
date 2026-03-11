@@ -13,6 +13,13 @@ class DemoAdapter(DomainAdapter):
     def __init__(self):
         self.sim = DemoSimulator()
         self.t = 0
+        self.overrides = {}
+
+    @property
+    def domain(self) -> str:
+        if hasattr(self, 'overrides') and 'domain' in self.overrides:
+            return self.overrides['domain']['value']
+        return "WIFI"
 
     def collect_metric_sample(self) -> MetricSample:
         # Check defaults
@@ -28,7 +35,7 @@ class DemoAdapter(DomainAdapter):
                  elapsed = time.time() - start
                  if elapsed < 0: elapsed = 0
 
-        m, evs, snaps = self.sim.generate_step(self.t)
+        m, evs, snaps = self.sim.generate_step(self.t, domain=self.domain)
         
         # If simulation active, regenerate metrics part only and overwrite
         if sim_type:
@@ -40,6 +47,7 @@ class DemoAdapter(DomainAdapter):
             # But wait, generate_step ignores args for metrics currently.
             # Let's just create a new sample using values from sim_metrics
             m = self.sim.collector.collect(
+                domain=self.domain,
                 latency_p95_ms=sim_metrics["latency_p95_ms"],
                 retry_pct=sim_metrics["retry_pct"],
                 airtime_busy_pct=sim_metrics["airtime_busy_pct"],

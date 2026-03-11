@@ -108,9 +108,13 @@ export const fetchManifest = async (deviceId) => {
     }
 };
 
-export const simulateIncident = async (type, duration) => {
+export const simulateIncident = async (type, duration, domain = null) => {
     try {
-        const response = await fetch(`${API_BASE_URL}/simulate/incident?type=${type}&duration=${duration}`, {
+        let url = `${API_BASE_URL}/simulate/incident?type=${type}&duration=${duration}`;
+        if (domain) {
+            url += `&domain=${domain}`;
+        }
+        const response = await fetch(url, {
             method: 'POST'
         });
         return await response.json();

@@ -160,7 +160,7 @@ class DemoSimulator:
             "radio_type": "802.11ax"
         }
 
-    def generate_step(self, t: int) -> Tuple[dict, List, List]:
+    def generate_step(self, t: int, domain: str = "WIFI") -> Tuple[dict, List, List]:
         # t=0: Emulated post-install state
         m_evs = []
         m_snaps = []
@@ -173,6 +173,7 @@ class DemoSimulator:
         
         # Create MetricSample using the collector (which adds TS, WindowRef)
         m = self.collector.collect(
+            domain=domain,
             latency_p95_ms=metrics["latency_p95_ms"],
             retry_pct=metrics["retry_pct"],
             airtime_busy_pct=metrics["airtime_busy_pct"],

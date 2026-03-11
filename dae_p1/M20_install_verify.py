@@ -42,7 +42,8 @@ def _vec(samples: List[MetricSample]) -> Dict[str, float]:
     out: Dict[str, float] = {}
     # Numeric performance metrics
     for f in ["latency_p95_ms","loss_pct","retry_pct","airtime_busy_pct",
-              "mesh_flap_count","wan_sinr_db", "signal_strength_pct"]:
+              "mesh_flap_count","wan_sinr_db", "signal_strength_pct",
+              "us_latency_p95_ms", "us_loss_pct", "ofdm_mer_db", "t3_count", "t4_count"]:
         m = get(f)
         if m is not None:
             out[f] = m
@@ -106,6 +107,7 @@ def verify_install(samples: List[MetricSample],
         return val if val is not None else default
 
     sys_info = {
+        "domain": get_last("domain", "WIFI"),
         "dns_status": get_last("dns_status", "UNKNOWN"),
         "channel": get_last("channel", 0),
         "radio_type": get_last("radio_type", "unknown"),
@@ -124,14 +126,23 @@ def verify_install(samples: List[MetricSample],
         "mesh_flap_count": [s.mesh_flap_count for s in window if s.mesh_flap_count is not None],
         "wan_sinr_db": [s.wan_sinr_db for s in window if s.wan_sinr_db is not None],
         "signal_strength_pct": [s.signal_strength_pct for s in window if s.signal_strength_pct is not None],
-        "phy_rate_mbps": [s.phy_rate_mbps for s in window if s.phy_rate_mbps is not None]
+        "phy_rate_mbps": [s.phy_rate_mbps for s in window if s.phy_rate_mbps is not None],
+        "us_rtt_ms": [s.us_latency_p95_ms for s in window if s.us_latency_p95_ms is not None],
+        "us_loss_pct": [s.us_loss_pct for s in window if s.us_loss_pct is not None],
+        "ofdm_mer_db": [s.ofdm_mer_db for s in window if s.ofdm_mer_db is not None],
+        "t3_count": [s.t3_count for s in window if s.t3_count is not None],
+        "t4_count": [s.t4_count for s in window if s.t4_count is not None],
+        "fec_corrected": [s.fec_corrected for s in window if s.fec_corrected is not None],
+        "fec_uncorrected": [s.fec_uncorrected for s in window if s.fec_uncorrected is not None]
     }
     
     p50_map = {k: qc.calculate(vals, 50) for k, vals in vectors.items() if vals}
     p95_map = {k: qc.calculate(vals, 95) for k, vals in vectors.items() if vals}
     p5_map  = {k: qc.calculate(vals, 5) for k, vals in vectors.items() if vals}
     
-    profile = ProfileManager.get("WIFI78_INSTALL_ACCEPT")
+    domain = sys_info.get("domain", "WIFI")
+    profile_ref = "CABLE_INSTALL_ACCEPT" if domain == "CABLE" else "WIFI78_INSTALL_ACCEPT"
+    profile = ProfileManager.get(profile_ref)
     check_results = profile.check(p50_map, p95_map, p5_map)
     reasons = [r.reason_code for r in check_results if r.status == "FAIL" and r.reason_code]
     
@@ -170,7 +181,7 @@ def verify_install(samples: List[MetricSample],
         dominant_factor=dominant,
         confidence=conf,
         fp_vector=v,
-        thresholds={"note": "Evaluated using WIFI78_INSTALL_ACCEPT profile from M13"},
+        thresholds={"note": f"Evaluated using {profile_ref} profile from M13", "profile_ref": profile_ref},
         system_info=sys_info,
         internal_health=internals
     )

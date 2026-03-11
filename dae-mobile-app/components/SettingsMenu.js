@@ -66,6 +66,12 @@ export default function SettingsMenu({ onNavigate, onBack }) {
             title: 'CSR Support Console',
             desc: 'Simulate agent fetching BYUSE diagnostic data',
             icon: '🎧'
+        },
+        {
+            id: 'DOMAIN_OVERRIDE',
+            title: 'Target Demo Domain',
+            desc: 'Force app environment (Wi-Fi / Cable)',
+            icon: '🔌'
         }
     ];
 

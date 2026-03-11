@@ -133,6 +133,7 @@ class VersionRefs:
 class MetricSample:
     ts: float
     window_ref: str
+    domain: Optional[str] = "WIFI"
     latency_p95_ms: Optional[float] = None
     loss_pct: Optional[float] = None
     retry_pct: Optional[float] = None
