@@ -436,11 +436,15 @@ class ProofCardGenerator:
             event_types = list(extracted)
             event_types.sort()
 
+        from .M00_common import DIAGNOSIS_MAP
+        primary_reason = reasons[0] if reasons else "PASSED_ALL_CHECKS"
+        derived_diagnosis = DIAGNOSIS_MAP.get(primary_reason, "UNKNOWN")
+
         return self._build_card(
             cid=card_id, 
             pref=profile_ref, 
             status=status,
-            diagnosis="WIFI_CONGESTION" if "WIFI_SIDE_OSCILLATION" in reasons else "UNKNOWN", # Mock logic, should be improved
+            diagnosis=derived_diagnosis,
             wref=window_ref_str, 
             reasons=reasons, 
             n=n,

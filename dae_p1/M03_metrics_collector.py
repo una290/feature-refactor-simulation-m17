@@ -35,7 +35,15 @@ class MetricsCollector:
                 band: Optional[str]=None,
                 phy_rate_mbps: Optional[int]=None,
                 phy_rx_rate_mbps: Optional[int]=None,
-                dns_status: Optional[str]=None) -> MetricSample:
+                dns_status: Optional[str]=None,
+                # Cable metrics
+                t3_count: Optional[int]=None,
+                t4_count: Optional[int]=None,
+                us_latency_p95_ms: Optional[float]=None,
+                us_loss_pct: Optional[float]=None,
+                ofdm_mer_db: Optional[float]=None,
+                fec_corrected: Optional[int]=None,
+                fec_uncorrected: Optional[int]=None) -> MetricSample:
         ts = now_ts()
         ws = self.windowing.window_ref(ts, "Ws")
         return MetricSample(
@@ -52,5 +60,10 @@ class MetricsCollector:
             # Extended
             channel=channel, bssid=bssid, radio_type=radio_type, band=band,
             phy_rate_mbps=phy_rate_mbps, phy_rx_rate_mbps=phy_rx_rate_mbps,
-            dns_status=dns_status
+            dns_status=dns_status,
+            # Cable Extended
+            t3_count=t3_count, t4_count=t4_count,
+            us_latency_p95_ms=us_latency_p95_ms, us_loss_pct=us_loss_pct,
+            ofdm_mer_db=ofdm_mer_db, fec_corrected=fec_corrected, 
+            fec_uncorrected=fec_uncorrected
         )

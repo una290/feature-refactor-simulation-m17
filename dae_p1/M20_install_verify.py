@@ -153,18 +153,10 @@ def verify_install(samples: List[MetricSample],
         dominant = "WAN (DNS)"
         is_fail = True
     elif is_fail:
+        from .M00_common import DIAGNOSIS_MAP
         # map first reason code to dominant factor
         rc = reasons[0]
-        if rc == "P95_RTT_TOO_HIGH":
-            dominant = "OPAQUE (Latency)"
-        elif rc == "P95_LOSS_TOO_HIGH":
-            dominant = "OPAQUE (Loss)"
-        elif rc == "WIFI_SIDE_OSCILLATION":
-            dominant = "WIFI (Noise)"
-        elif rc == "LOW_PHY_RATE":
-            dominant = "WIFI (Link Speed)"
-        else:
-            dominant = rc
+        dominant = DIAGNOSIS_MAP.get(rc, rc)
 
     verdict = "FAIL" if is_fail else "PASS"
     conf = 0.8 if is_fail else 0.85

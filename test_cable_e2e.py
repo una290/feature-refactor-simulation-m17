@@ -43,8 +43,9 @@ def run_tests():
     proof_data = resp.json()
     print("PROOF_DATA RESPONSE:", json.dumps(proof_data, indent=2))
     
-    profile_ref = proof_data.get("profile_ref")
-    health_checks = proof_data.get("health_checks", [])
+    engineering_proof = proof_data.get("payload", {}).get("engineering_proof", {})
+    profile_ref = engineering_proof.get("profile_ref")
+    health_checks = engineering_proof.get("health_checks", [])
     
     print(f"Profile: {profile_ref}")
     check_names = [c["name"] for c in health_checks]
