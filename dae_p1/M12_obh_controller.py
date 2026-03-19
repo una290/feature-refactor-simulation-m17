@@ -5,7 +5,10 @@ from typing import Dict, Any, Optional, List
 from .M00_common import EpisodeRecognition, iso, ProofCard, asdict
 from .M10_timeline_builder import TimelineBuilder
 from .M11_bundle_exporter import BundleExporter
-from .M22_privacy_governance import PrivacyGovernance
+from .M22_privacy_governance import PrivacyGovernance, BYUSE_RULES
+
+# Contexts that are allowed to receive pc_priv (must exist in BYUSE_RULES)
+_PRIV_CONTEXTS = set(BYUSE_RULES.keys())  # e.g. {"SUPPORT_CLOSURE", "DISPUTE", "COMPLIANCE_AUDIT"}
 from .M23_audit_logger import AuditLogger
 import os
 import pickle
@@ -44,15 +47,28 @@ class OBHController:
         from .M13_fp_lite import ProofCardGenerator
         self.pc_generator = ProofCardGenerator()
 
-        # Storage for Episode Retrieval Demo
-        self.db_path = os.path.join(os.path.dirname(__file__), '..', 'saved_cards.pkl')
-        self.saved_full_cards: Dict[str, ProofCard] = {}
-        if os.path.exists(self.db_path):
+        # [REFERENCE-ONLY STORAGE DECOUPLING]
+        # Tier 1: Public Ledger (Metadata Only)
+        self.ledger_path = os.path.join(os.path.dirname(__file__), '..', 'brel_ledger.pkl')
+        # Tier 2: Evidence Vault (Sensitive Payloads)
+        self.vault_path = os.path.join(os.path.dirname(__file__), '..', 'evidence_vault.pkl')
+        
+        self.ledger: Dict[str, ProofCard] = {}
+        self.vault: Dict[str, Dict[str, Any]] = {}
+
+        if os.path.exists(self.ledger_path):
             try:
-                with open(self.db_path, 'rb') as f:
-                    self.saved_full_cards = pickle.load(f)
+                with open(self.ledger_path, 'rb') as f:
+                    self.ledger = pickle.load(f)
             except Exception as e:
-                print(f"[DEBUG M12] Failed to load from db: {e}")
+                print(f"[DEBUG M12] Failed to load ledger: {e}")
+
+        if os.path.exists(self.vault_path):
+            try:
+                with open(self.vault_path, 'rb') as f:
+                    self.vault = pickle.load(f)
+            except Exception as e:
+                print(f"[DEBUG M12] Failed to load vault: {e}")
                 
         self.signed_manifests: set = set()
         self.disputed_episodes: set = set()
@@ -79,13 +95,21 @@ class OBHController:
             full_card.payload["observability"] = recognition.observability
             full_card.payload["evidence_refs"] = recognition.evidence_refs
             
-        self.saved_full_cards[recognition.episode_id] = full_card
-        print(f"[DEBUG M12] Saved full card for episode: '{recognition.episode_id}'")
+        # [STORAGE SPLIT] Save Card Metadata to Ledger, Payload to Vault
+        evidence_payload = full_card.payload
+        full_card.payload = None # Detach for Ledger
+        
+        self.ledger[recognition.episode_id] = full_card
+        self.vault[recognition.episode_id] = evidence_payload
+        
+        print(f"[DEBUG M12] Saved episode '{recognition.episode_id}' to Decoupled Ledger/Vault.")
         try:
-            with open(self.db_path, 'wb') as f:
-                pickle.dump(self.saved_full_cards, f)
+            with open(self.ledger_path, 'wb') as f:
+                pickle.dump(self.ledger, f)
+            with open(self.vault_path, 'wb') as f:
+                pickle.dump(self.vault, f)
         except Exception as e:
-            print(f"[DEBUG M12] Failed to save to db: {e}")
+            print(f"[DEBUG M12] Failed to persist storage: {e}")
             
         # 2. Pipeline: View Projector (Hook 2: Egress Filter)
         # Decide what actually leaves
@@ -94,18 +118,14 @@ class OBHController:
         # 3. Pipeline: BYUSE Validator (Hook 3: Compliance Check)
         is_signed = recognition.episode_id in self.signed_manifests
         evidence_grade, upgrade_req = self.governance.evaluate_closure_grade(projected_card_dict, byuse_context_ref, is_signed=is_signed)
-        
-        # [NEW] Enforce Egress Gate on Payload
-        is_dispute = byuse_context_ref and "dispute" in byuse_context_ref
-        
-        # We need the payload to build pc_priv and pc_min
-        payload = projected_card_dict.get("payload")
-        
-        # Determine if we should strip for pc_priv generation
-        should_strip = False
-        if not is_dispute or evidence_grade == "NOT_CLOSURE_GRADE":
-            should_strip = True
-            
+
+        # [產品化簡化] 判定是否需要剝離 Payload
+        # 只要 grade 不是 "READY"，就不允許輸出 pc_priv
+        should_strip = (evidence_grade != "READY")
+
+        # We use the evidence_payload cached before Ledger detach
+        payload = evidence_payload
+
         # Extract/Embed Logic based on Privacy
         # Assembling PC-Min (Always Safe / External View)
         pc_min = {
@@ -156,11 +176,15 @@ class OBHController:
         path = self.exporter.export(out_dir, recognition.episode_id, bundle)
         
         # [NEW] Audit Logging Persistence
+        # [FIX-3] policy_snapshot_ref: refs['policy'] 現在是字串 Token，不是物件，直接讀取
+        policy_ref_val = projected_card_dict.get("refs", {}).get("policy", "UNKNOWN")
+        if isinstance(policy_ref_val, dict):
+            policy_ref_val = policy_ref_val.get("policy_id", "UNKNOWN")
         self.audit_logger.log_egress(
             episode_id=recognition.episode_id,
             authority_scope_ref=authority_scope_ref,
             egress_receipt_ref=projected_card_dict.get("egress_receipt_ref"),
-            policy_snapshot_ref=projected_card_dict.get("refs", {}).get("policy", {}).get("policy_id", "UNKNOWN"),
+            policy_snapshot_ref=policy_ref_val,
             context_ref=byuse_context_ref,
             evidence_grade=evidence_grade
         )
@@ -177,34 +201,29 @@ class OBHController:
         from dataclasses import asdict
         from .M12_obh_controller import _safe_serialize
         
-        print(f"[DEBUG M12] Request to retrieve episode: '{episode_id}'")
+        print(f"[DEBUG M12] Request to retrieve episode: '{episode_id}' from split storage")
         
-        full_card = self.saved_full_cards.get(episode_id)
-        if not full_card:
-            print(f"[DEBUG M12] Episode '{episode_id}' not found in saved_full_cards dict.")
+        ref_card = self.ledger.get(episode_id)
+        if not ref_card:
+            print(f"[DEBUG M12] Episode '{episode_id}' not found in Ledger.")
             return None
             
-        projected_card_dict = self.governance.project_view(full_card, authority_scope_ref)
-        
-        is_dispute = byuse_context_ref and "dispute" in byuse_context_ref
-        if is_dispute:
-            self.disputed_episodes.add(episode_id)
+        # Re-attach payload from Vault for projection logic (ephemeral join)
+        ref_card.payload = self.vault.get(episode_id)
             
+        projected_card_dict = self.governance.project_view(ref_card, authority_scope_ref)
+        
         is_signed = episode_id in self.signed_manifests
         evidence_grade, upgrade_req = self.governance.evaluate_closure_grade(projected_card_dict, byuse_context_ref, is_signed=is_signed)
-        
-        # [NEW] Enforce Egress Gate on Payload BEFORE serialization to fix slowness
-        should_strip = False
-        if not is_dispute or evidence_grade == "NOT_CLOSURE_GRADE":
-            should_strip = True
+
+        # [產品化簡化] 判定是否需要剝離 Payload
+        should_strip = (evidence_grade != "READY")
         if fields == "pc_min":
             should_strip = True
             
         # We need the payload to build pc_priv if it wasn't stripped
         payload = projected_card_dict.get("payload")
-        
-        if should_strip:
-            projected_card_dict["egress_receipt_ref"] = None
+        # [FIX-3] 不再在這裡清空 egress_receipt_ref（那是 M22 project_view 的職責，不是 M12 的）
 
         pc_min = {
             "status": projected_card_dict.get("status"),

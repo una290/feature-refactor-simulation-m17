@@ -1,0 +1,405 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+    <meta charset="utf-8">
+    <title>BREL Spec v2 Logic Review</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        table { border-collapse: collapse; width: 100%; }
+        table, th, td { border: 1px solid black; }
+        th, td { padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+<h1>BREL 系統規格書 v2.0</h1>
+<h2>純參照架構（Reference-Only Architecture）</h2>
+<p><strong>版本</strong>: 2.0<br />
+<strong>日期</strong>: 2026-03-17<br />
+<strong>狀態</strong>: 正式規格（Authoritative Spec）<br />
+<strong>適用對象</strong>: 工程師、AI 系統、架構審查者</p>
+<hr />
+<h2>1. 設計原則（Design Principles）</h2>
+<p>本規格基於以下四條核心原則。所有後續設計決策皆以此為依據：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">原則</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>PII-Blind</strong></td>
+<td style="text-align: left;">BREL 系統不儲存、不處理任何可識別個人資訊。所有個資在進入系統前必須已被 Token 化。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Reference-In, Reference-Out</strong></td>
+<td style="text-align: left;">進入系統的是指針（Token/ID/Hash），離開系統的也是指針。BREL 是「信任橋樑」，不是「資料倉庫」。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Policy-as-Config</strong></td>
+<td style="text-align: left;">任何業務規則（隱私、合規、BYUSE 條件）以設定檔定義，不硬編碼於核心程式碼中。修改規則不需要重新部署引擎。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Stateless Core</strong></td>
+<td style="text-align: left;">BREL 核心引擎保持無狀態（Stateless）。所有「用途判斷（BYUSE）」由呼叫方宣告，而非引擎決定。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>2. 系統角色定義（System Role）</h2>
+<ul>
+<li><strong>角色</strong>: 指針紀錄者（Reference Tracker）/ 治理中介（Governance Intermediary）</li>
+<li><strong>非角色</strong>: 個資控制者（Data Controller）、資料倉庫（Data Warehouse）</li>
+<li><strong>法律意涵</strong>: 因不持有個資，BREL 不受 GDPR Article 4(7) 的 Data Controller 義務約束。</li>
+</ul>
+<hr />
+<h2>3. 核心資料結構（Core Data Schema）</h2>
+<h3>3.1 ProofCard（核心憑證）</h3>
+<p><code>json
+{
+  "attempt_id":        "string (ULID or UUID, required)",
+  "profile_ref":       "string (e.g. OPENRAN_ADMISSION_V4)",
+  "verdict":           "enum: READY | NOT_READY | INSUFFICIENT_EVIDENCE",
+  "refs": {
+    "[ref_type]":      "string (Opaque Token, 由 Data Vault 或受信任邊界層提供)"
+  },
+  "tags":              ["string (由非同步 Tagging Engine 貼上)"],
+  "missing_refs":      ["string (缺少的必填 ref_type 名稱)"],
+  "generated_at_unix": "integer",
+  "version_ref":       "string"
+}</code></p>
+<blockquote>
+<p>[!IMPORTANT]
+<code>refs</code> 的每個 value 必須是<strong>不透明字串（Opaque String）</strong>。
+系統<strong>不在 ProofCard 儲存層</strong>存放 <code>payload</code>、<code>pc_min</code>、<code>pc_priv</code>。這些是 API 響應層動態組裝的<strong>視圖（View）</strong>。</p>
+</blockquote>
+<h3>3.2 EgressBundle（對外輸出包，API 回應層動態生成）</h3>
+<p><code>json
+{
+  "spec":                     "BREL_v2.0_RefOnly",
+  "attempt_id":               "string",
+  "verdict":                  "READY | NOT_READY | INSUFFICIENT_EVIDENCE",
+  "evidence_grade":           "READY | PENDING | INCOMPLETE | UNAUTHORIZED",
+  "refs":                     { "[ref_type]": "string" },
+  "tags":                     ["string"],
+  "missing_refs":             ["string"],
+  "egress_receipt_ref":       "string | null",
+  "upgrade_requirements_ref": "string | null",
+  "pc_min":                   "{ ... 公開視圖 }",
+  "pc_priv":                  "{ ... 授權視圖 } | null"
+}</code></p>
+<hr />
+<h2>4. 模組規格（Module Specifications）</h2>
+<h3>M00_common — 共用型別</h3>
+<p><strong>提供</strong>:
+- <code>ProofCard</code>, <code>MetricSample</code>, <code>ChangeEventCard</code> dataclasses
+- <code>sha256_str(s: str) -&gt; str</code>（無鹽，僅用於非個資雜湊）
+- <code>iso(ts: float) -&gt; str</code></p>
+<blockquote>
+<p>[!CAUTION]
+<strong>廢棄</strong>: <code>PrivacyPolicyRef</code>, <code>PurposeRef</code>, <code>RetentionRef</code>, <code>DisclosureScopeRef</code> 這些物件型別不得以 dataclass 形式回傳給上層。一律以字串 Token 替代。</p>
+</blockquote>
+<hr />
+<h3>M13_fp_lite — ProofCard 生成器</h3>
+<p><strong>函式簽章</strong>:
+<code>python
+def generate(
+    metrics: List[MetricSample | dict],
+    events: List[Any],
+    snapshots: List[Any],
+    profile_ref: str,
+    window_ref_str: str = "W-LATEST",
+    manifest_ref_str: str = "TBD",
+    authority_scope_ref: Optional[str] = None,
+    byuse_context_ref: Optional[str] = None,
+    episode_id: Optional[str] = None
+) -&gt; ProofCard</code></p>
+<p><strong>規則</strong>:
+- <code>ProofCard.refs</code> 的每個 value 必須是字串
+- 不得在此函式中做任何資料過濾或遮罩
+- 不得回傳 <code>pc_min</code>/<code>pc_priv</code> 結構（那是 M12 的工作）</p>
+<hr />
+<h3>M22_privacy_governance — 隱私治理</h3>
+<h4>Hook 1: <code>check_base_validity(attempt) -&gt; (bool, List[str], Dict[str, str])</code></h4>
+<ul>
+<li>從 <code>PROFILE_CONFIG</code> 讀取必填 Refs 清單，檢查是否齊全</li>
+<li>回傳的 refs dict 必須是 <code>Dict[str, str]</code>（純字串 Token）</li>
+</ul>
+<h4>Hook 2: <code>project_view(proof_card, authority_scope_ref) -&gt; Dict</code></h4>
+<ul>
+<li><strong>唯一職責</strong>: 驗證授權並生成 <code>egress_receipt_ref</code></li>
+<li><strong>禁止</strong>: 設定 <code>payload = None</code>，修改資料內容</li>
+</ul>
+<h4>Hook 3: <code>evaluate_closure_grade(card_dict, context_ref, is_signed) -&gt; (str, Optional[str])</code></h4>
+<ul>
+<li>從 <code>BYUSE_RULES</code> 設定字典讀取規則</li>
+<li><strong>禁止</strong>: <code>if "dispute" in context_ref</code> 等硬編碼業務邏輯</li>
+</ul>
+<p><strong>BYUSE_RULES 格式</strong>:
+<code>python
+BYUSE_RULES: Dict[str, Dict] = {
+    "SUPPORT_CLOSURE": {
+        "on_complete_grade": "READY",
+    },
+    "DISPUTE": {
+        "requires_signed": True,
+        "on_missing_grade": "PENDING",
+        "on_complete_grade": "READY",
+    },
+}</code></p>
+<hr />
+<h3>M12_obh_controller — OBH 輸出包組裝器</h3>
+<p><strong>PC-Min / PC-Priv 組裝邏輯</strong>:
+```python
+should_strip = (evidence_grade != "READY")</p>
+<h1>或明確請求 fields="pc_min"</h1>
+<p>if should_strip:
+    pc_priv = None
+else:
+    pc_priv = { "timeline": ..., "engineering_proof": ..., "observability": ..., "evidence_refs": ... }
+```</p>
+<p><strong>PC-Min 永遠包含</strong>: <code>status</code>, <code>verdict</code>, <code>diagnosis_code</code>, <code>evidence_grade</code>, <code>episode_id</code>, <code>window_ref</code>, <code>missing_evidence_class</code>, <code>upgrade_requirements_ref</code>, <code>egress_receipt_ref</code></p>
+<hr />
+<h3>4.5 存儲層 — 帳本與證據庫分離 (Storage Tiering)</h3>
+<p>為了嚴格符合 Reference-Only 架構，BREL 採用雙層儲存模型：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">儲存層</th>
+<th style="text-align: left;">檔案名稱</th>
+<th style="text-align: left;">內容</th>
+<th style="text-align: left;">隱私等級</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>公共帳本 (Ledger)</strong></td>
+<td style="text-align: left;"><code>brel_ledger.pkl</code></td>
+<td style="text-align: left;">僅包含 <code>ProofCard</code> 元數據、Token、判定結果。不含任何 PII Payload。</td>
+<td style="text-align: left;"><strong>PII-Free</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>證據保險庫 (Vault)</strong></td>
+<td style="text-align: left;"><code>evidence_vault.pkl</code></td>
+<td style="text-align: left;">儲存原始證據 (Timeline, Engineering Stats)。僅在授權取回時暫時組合。</td>
+<td style="text-align: left;"><strong>PII-Encrypted/Protected</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>存儲合規要求</strong>:
+- 平時狀態（At Rest）：帳本與證據必須物理/邏輯隔離。
+- 讀取狀態（At Retrieval）：僅當檢索請求攜帶合法 <code>byuse_context_ref</code> 並通過 <code>M22</code> 判定時，方可從 Vault 提取證據並與 Ledger 憑證點對點組裝（Ephemeral Join）。</p>
+<hr />
+<h2>5. 安全規格（Security）</h2>
+<h3>Token 化方式（優先順序）</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">優先級</th>
+<th style="text-align: left;">方式</th>
+<th style="text-align: left;">安全性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td style="text-align: left;"><strong>Opaque UUID</strong>（Data Vault 簽發，BREL 不識別其意義）</td>
+<td style="text-align: left;">最高</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td style="text-align: left;"><strong>Salted HMAC-SHA256</strong>（需 HSM / 環境變數管理 secret）</td>
+<td style="text-align: left;">高</td>
+</tr>
+<tr>
+<td style="text-align: center;">❌</td>
+<td style="text-align: left;">~~無鹽 SHA256(raw_pii)~~（彩虹表可反推，禁止使用）</td>
+<td style="text-align: left;">不可接受</td>
+</tr>
+</tbody>
+</table>
+<h3>Egress 授權</h3>
+<p>每次外送操作需：
+1. 提供有效 <code>authority_scope_ref</code>
+2. 生成 <code>egress_receipt_ref</code> 並寫入 <code>AuditLog</code>（<code>M23_audit_logger</code>）</p>
+<hr />
+<h2>6. API 端點對應表</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Method</th>
+<th style="text-align: left;">Path</th>
+<th style="text-align: left;">前端函式</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/</code></td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Health Check</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/status</code></td>
+<td style="text-align: left;"><code>fetchStatus()</code></td>
+<td style="text-align: left;">設備狀態</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/fleet</code></td>
+<td style="text-align: left;"><code>fetchFleet()</code></td>
+<td style="text-align: left;">艦隊清單</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/device/{id}</code></td>
+<td style="text-align: left;"><code>fetchDeviceDetail(id)</code></td>
+<td style="text-align: left;">設備詳情</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/device/{id}/proof</code></td>
+<td style="text-align: left;"><code>fetchProofData(id)</code></td>
+<td style="text-align: left;">即時 ProofCard</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POST</code></td>
+<td style="text-align: left;"><code>/obh/trigger</code></td>
+<td style="text-align: left;"><code>triggerOBH(context)</code></td>
+<td style="text-align: left;">觸發 OBH 快照</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/obh/proofcard/{id}</code></td>
+<td style="text-align: left;"><code>fetchOBHBundle(id, ctx, fields)</code></td>
+<td style="text-align: left;">歷史 Bundle 取回</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/obh/history_summary</code></td>
+<td style="text-align: left;"><code>fetchHistorySummary()</code></td>
+<td style="text-align: left;">Episode 清單</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POST</code></td>
+<td style="text-align: left;"><code>/obh/manifest/sign</code></td>
+<td style="text-align: left;"><code>signManifest(id)</code></td>
+<td style="text-align: left;">使用者簽署授權</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POST</code></td>
+<td style="text-align: left;"><code>/api/obh/consent/request</code></td>
+<td style="text-align: left;"><code>requestConsent(id, csrId)</code></td>
+<td style="text-align: left;">CSR 發起授權請求</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/api/obh/consent/pending</code></td>
+<td style="text-align: left;"><code>fetchPendingConsents()</code></td>
+<td style="text-align: left;">待處理授權清單</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>7. 廢棄項目（Deprecated）</h2>
+<h2>7. 廢棄項目（Deprecated）</h2>
+<blockquote>
+<p>[!WARNING]
+以下設計在 v2.0 已正式廢棄，且<strong>已經在系統中全面落實移除</strong>。不得在新程式碼中重新引入：</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">廢棄項目</th>
+<th style="text-align: left;">替代方式</th>
+<th style="text-align: left;">執行狀態</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>PrivacyPolicyRef</code> dataclass 作為函式回傳值</td>
+<td style="text-align: left;">純字串 Token：<code>{"policy": "tok_pol_v1"}</code></td>
+<td style="text-align: left;">✅已從 <code>M00_common</code> 移除實體</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>project_view</code> 設定 <code>payload = None</code> 做過濾</td>
+<td style="text-align: left;">M12 根據授權狀態決定 <code>pc_priv</code> 是否為 null</td>
+<td style="text-align: left;">✅已交由 <code>M12</code> 動態剝離</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>if "dispute" in context_ref</code> 硬編碼判斷</td>
+<td style="text-align: left;"><code>BYUSE_RULES</code> 設定字典</td>
+<td style="text-align: left;">✅已改用設定檔驅動</td>
+</tr>
+<tr>
+<td style="text-align: left;">ProofCard 內嵌 <code>pc_min</code>/<code>pc_priv</code> 儲存</td>
+<td style="text-align: left;">儲存層只有一份完整 ProofCard；視圖在 API 層動態生成</td>
+<td style="text-align: left;">✅ <code>pc_min</code>/<code>priv</code> 已從 DB 徹底解耦</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>8. 術語表（Glossary）</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">術語</th>
+<th style="text-align: left;">定義</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>ProofCard</strong></td>
+<td style="text-align: left;">核心儲存物件。不可篡改的治理事件紀錄，只含 Ref Tokens 和判定結果。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>PC-Min</strong></td>
+<td style="text-align: left;">公開視圖。從 EgressBundle 動態萃取，不含工程細節，適合跨域流通。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>PC-Priv</strong></td>
+<td style="text-align: left;">授權視圖。含工程細節，需 BYUSE 升級授權。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Token / Ref</strong></td>
+<td style="text-align: left;">由外部 Data Vault 或受信任邊界層簽發的不透明字串，代表資料的「指針」。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>BYUSE</strong></td>
+<td style="text-align: left;">By-Use Enforcement。依呼叫方宣告的「用途」動態決定所需 Evidence Grade。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>READY</strong></td>
+<td style="text-align: left;">授權通過。所有行為要求（如簽署）與技術指標已滿足，開放完整證據視圖。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>PENDING</strong></td>
+<td style="text-align: left;">待授權（人為）。主要用於 DISPUTE 情境，提示使用者尚未在 App 簽署授權。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>INCOMPLETE</strong></td>
+<td style="text-align: left;">待修復（技術）。設備端 Refs（如 Policy）遺失或同步失敗，提示系統配置異常。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>UNAUTHORIZED</strong></td>
+<td style="text-align: left;">安全阻擋。用途宣告不符（Context mismatched）或未授權的調閱請求。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Egress Receipt</strong></td>
+<td style="text-align: left;">每次授權外送時生成的唯一回執 Token，寫入稽核記錄。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Profile</strong></td>
+<td style="text-align: left;">針對場景定義的必填 Refs 與驗證規則集（e.g. WIFI78, CABLE, OPENRAN）。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>BYUSE_RULES</strong></td>
+<td style="text-align: left;">Policy-as-Config 字典，定義各用途所需 Refs 及對應 Grade，取代硬編碼邏輯。</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>

@@ -1,0 +1,181 @@
+BREL 系統規格書 v2.0
+純參照架構（Reference-Only Architecture）
+版本: 2.0
+日期: 2026-03-17
+狀態: 正式規格（Authoritative Spec）
+適用對象: 工程師、AI 系統、架構審查者
+1. 設計原則（Design Principles）
+本規格基於以下四條核心原則。所有後續設計決策皆以此為依據：
+原則
+說明
+**PII-Blind**
+BREL 系統不儲存、不處理任何可識別個人資訊。所有個資在進入系統前必須已被 Token 化。
+**Reference-In, Reference-Out**
+進入系統的是指針（Token/ID/Hash），離開系統的也是指針。BREL 是「信任橋樑」，不是「資料倉庫」。
+**Policy-as-Config**
+任何業務規則（隱私、合規、BYUSE 條件）以設定檔定義，不硬編碼於核心程式碼中。修改規則不需要重新部署引擎。
+**Stateless Core**
+BREL 核心引擎保持無狀態（Stateless）。所有「用途判斷（BYUSE）」由呼叫方宣告，而非引擎決定。
+2. 系統角色定義（System Role）
+角色: 指針紀錄者（Reference Tracker）/ 治理中介（Governance Intermediary）
+非角色: 個資控制者（Data Controller）、資料倉庫（Data Warehouse）
+法律意涵: 因不持有個資，BREL 不受 GDPR Article 4(7) 的 Data Controller 義務約束。
+3. 核心資料結構（Core Data Schema）
+3.1 ProofCard（核心憑證）
+{  "attempt_id":        "string (ULID or UUID, required)",  "profile_ref":       "string (e.g. OPENRAN_ADMISSION_V4)",  "verdict":           "enum: READY | NOT_READY | INSUFFICIENT_EVIDENCE",  "refs": {    "[ref_type]":      "string (Opaque Token, 由 Data Vault 或受信任邊界層提供)"  },  "tags":              ["string (由非同步 Tagging Engine 貼上)"],  "missing_refs":      ["string (缺少的必填 ref_type 名稱)"],  "generated_at_unix": "integer",  "version_ref":       "string"}
+[IMPORTANT] `refs` 的每個 value 必須是**不透明字串（Opaque String）**。 系統**不在 ProofCard 儲存層**存放 `payload`、`pc_min`、`pc_priv`。這些是 API 響應層動態組裝的**視圖（View）**。
+3.2 EgressBundle（對外輸出包，API 回應層動態生成）
+{  "spec":                     "BREL_v2.0_RefOnly",  "attempt_id":               "string",  "verdict":                  "READY | NOT_READY | INSUFFICIENT_EVIDENCE",  "evidence_grade":           "READY | PENDING | INCOMPLETE | UNAUTHORIZED",  "refs":                     { "[ref_type]": "string" },  "tags":                     ["string"],  "missing_refs":             ["string"],  "egress_receipt_ref":       "string | null",  "upgrade_requirements_ref": "string | null",  "pc_min":                   "{ ... 公開視圖 }",  "pc_priv":                  "{ ... 授權視圖 } | null"}
+4. 模組規格（Module Specifications）
+M00_common — 共用型別
+提供:
+`ProofCard`, `MetricSample`, `ChangeEventCard` dataclasses
+`sha256_str(s: str) -> str`（無鹽，僅用於非個資雜湊）
+`iso(ts: float) -> str`
+[CAUTION] **廢棄**: `PrivacyPolicyRef`, `PurposeRef`, `RetentionRef`, `DisclosureScopeRef` 這些物件型別不得以 dataclass 形式回傳給上層。一律以字串 Token 替代。
+M13_fp_lite — ProofCard 生成器
+函式簽章:
+def generate(    metrics: List[MetricSample | dict],    events: List[Any],    snapshots: List[Any],    profile_ref: str,    window_ref_str: str = "W-LATEST",    manifest_ref_str: str = "TBD",    authority_scope_ref: Optional[str] = None,    byuse_context_ref: Optional[str] = None,    episode_id: Optional[str] = None) -> ProofCard
+規則:
+`ProofCard.refs` 的每個 value 必須是字串
+不得在此函式中做任何資料過濾或遮罩
+不得回傳 `pc_min`/`pc_priv` 結構（那是 M12 的工作）
+M22_privacy_governance — 隱私治理
+Hook 1: `check_base_validity(attempt) -> (bool, List[str], Dict[str, str])`
+從 `PROFILE_CONFIG` 讀取必填 Refs 清單，檢查是否齊全
+回傳的 refs dict 必須是 `Dict[str, str]`（純字串 Token）
+Hook 2: `project_view(proof_card, authority_scope_ref) -> Dict`
+唯一職責: 驗證授權並生成 `egress_receipt_ref`
+禁止: 設定 `payload = None`，修改資料內容
+Hook 3: `evaluate_closure_grade(card_dict, context_ref, is_signed) -> (str, Optional[str])`
+從 `BYUSE_RULES` 設定字典讀取規則
+禁止: `if "dispute" in context_ref` 等硬編碼業務邏輯
+BYUSE_RULES 格式:
+BYUSE_RULES: Dict[str, Dict] = {    "SUPPORT_CLOSURE": {        "on_complete_grade": "READY",    },    "DISPUTE": {        "requires_signed": True,        "on_missing_grade": "PENDING",        "on_complete_grade": "READY",    },}
+M12_obh_controller — OBH 輸出包組裝器
+PC-Min / PC-Priv 組裝邏輯:
+should_strip = (evidence_grade != "READY")# 或明確請求 fields="pc_min"if should_strip:    pc_priv = Noneelse:    pc_priv = { "timeline": ..., "engineering_proof": ..., "observability": ..., "evidence_refs": ... }
+PC-Min 永遠包含: status, verdict, diagnosis_code, evidence_grade, episode_id, window_ref, missing_evidence_class, upgrade_requirements_ref, egress_receipt_ref
+4.5 存儲層 — 帳本與證據庫分離 (Storage Tiering)
+為了嚴格符合 Reference-Only 架構，BREL 採用雙層儲存模型：
+儲存層
+檔案名稱
+內容
+隱私等級
+**公共帳本 (Ledger)**
+`brel_ledger.pkl`
+僅包含 `ProofCard` 元數據、Token、判定結果。不含任何 PII Payload。
+**PII-Free**
+**證據保險庫 (Vault)**
+`evidence_vault.pkl`
+儲存原始證據 (Timeline, Engineering Stats)。僅在授權取回時暫時組合。
+**PII-Encrypted/Protected**
+存儲合規要求:
+平時狀態（At Rest）：帳本與證據必須物理/邏輯隔離。
+讀取狀態（At Retrieval）：僅當檢索請求攜帶合法 `byuse_context_ref` 並通過 `M22` 判定時，方可從 Vault 提取證據並與 Ledger 憑證點對點組裝（Ephemeral Join）。
+5. 安全規格（Security）
+Token 化方式（優先順序）
+優先級
+方式
+安全性
+1
+**Opaque UUID**（Data Vault 簽發，BREL 不識別其意義）
+最高
+2
+**Salted HMAC-SHA256**（需 HSM / 環境變數管理 secret）
+高
+❌
+~~無鹽 SHA256(raw_pii)~~（彩虹表可反推，禁止使用）
+不可接受
+Egress 授權
+每次外送操作需：
+1. 提供有效 authority_scope_ref
+2. 生成 egress_receipt_ref 並寫入 AuditLog（M23_audit_logger）
+6. API 端點對應表
+Method
+Path
+前端函式
+說明
+`GET`
+`/`
+—
+Health Check
+`GET`
+`/status`
+`fetchStatus()`
+設備狀態
+`GET`
+`/fleet`
+`fetchFleet()`
+艦隊清單
+`GET`
+`/device/{id}`
+`fetchDeviceDetail(id)`
+設備詳情
+`GET`
+`/device/{id}/proof`
+`fetchProofData(id)`
+即時 ProofCard
+`POST`
+`/obh/trigger`
+`triggerOBH(context)`
+觸發 OBH 快照
+`GET`
+`/obh/proofcard/{id}`
+`fetchOBHBundle(id, ctx, fields)`
+歷史 Bundle 取回
+`GET`
+`/obh/history_summary`
+`fetchHistorySummary()`
+Episode 清單
+`POST`
+`/obh/manifest/sign`
+`signManifest(id)`
+使用者簽署授權
+`POST`
+`/api/obh/consent/request`
+`requestConsent(id, csrId)`
+CSR 發起授權請求
+`GET`
+`/api/obh/consent/pending`
+`fetchPendingConsents()`
+待處理授權清單
+7. 廢棄項目（Deprecated）
+[WARNING] 以下設計在 v2.0 已正式廢棄，不得在新程式碼中重新引入：
+廢棄項目
+替代方式
+`PrivacyPolicyRef` dataclass 作為函式回傳值
+純字串 Token：`{"policy": "tok_pol_v1"}`
+`project_view` 設定 `payload = None` 做過濾
+M12 根據授權狀態決定 `pc_priv` 是否為 null
+`if "dispute" in context_ref` 硬編碼判斷
+`BYUSE_RULES` 設定字典
+ProofCard 內嵌 `pc_min`/`pc_priv` 儲存
+儲存層只有一份完整 ProofCard；視圖在 API 層動態生成
+8. 術語表（Glossary）
+術語
+定義
+**ProofCard**
+核心儲存物件。不可篡改的治理事件紀錄，只含 Ref Tokens 和判定結果。
+**PC-Min**
+公開視圖。從 EgressBundle 動態萃取，不含工程細節，適合跨域流通。
+**PC-Priv**
+授權視圖。含工程細節，需 BYUSE 升級授權。
+**Token / Ref**
+由外部 Data Vault 或受信任邊界層簽發的不透明字串，代表資料的「指針」。
+**BYUSE**
+By-Use Enforcement。依呼叫方宣告的「用途」動態決定所需 Evidence Grade。
+**READY**
+授權通過。所有行為要求（如簽署）與技術指標已滿足，開放完整證據視圖。
+**PENDING**
+待授權（人為）。主要用於 DISPUTE 情境，提示使用者尚未在 App 簽署授權。
+**INCOMPLETE**
+待修復（技術）。設備端 Refs（如 Policy）遺失或同步失敗，提示系統配置異常。
+**UNAUTHORIZED**
+安全阻擋。用途宣告不符（Context mismatched）或未授權的調閱請求。
+**Egress Receipt**
+每次授權外送時生成的唯一回執 Token，寫入稽核記錄。
+**Profile**
+針對場景定義的必填 Refs 與驗證規則集（e.g. WIFI78, CABLE, OPENRAN）。
+**BYUSE_RULES**
+Policy-as-Config 字典，定義各用途所需 Refs 及對應 Grade，取代硬編碼邏輯。

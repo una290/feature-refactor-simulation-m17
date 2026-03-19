@@ -600,16 +600,16 @@ def get_obh_history_summary():
         return {"error": "Core not initialized"}
     
     summary_list = []
-    # Read directly from obh controller's saved cache
-    for ep_id, full_card in core.obh.saved_full_cards.items():
+    # Read directly from obh controller's ledger (Reference-Only)
+    for ep_id, ref_card in core.obh.ledger.items():
         summary_list.append({
             "episode_id": ep_id,
-            "profile_ref": getattr(full_card, 'profile_ref', 'UNKNOWN'),
-            "window_ref": getattr(full_card, 'window_ref', 'UNKNOWN'),
-            "verdict": getattr(full_card, 'status', 'UNKNOWN'), # Legacy 
-            "status": getattr(full_card, 'status', 'UNKNOWN'),
-            "diagnosis_code": getattr(full_card, 'diagnosis_code', 'UNKNOWN'),
-            "time": getattr(full_card, 'data_range_end', ''),
+            "profile_ref": getattr(ref_card, 'profile_ref', 'UNKNOWN'),
+            "window_ref": getattr(ref_card, 'window_ref', 'UNKNOWN'),
+            "verdict": getattr(ref_card, 'status', 'UNKNOWN'), 
+            "status": getattr(ref_card, 'status', 'UNKNOWN'),
+            "diagnosis_code": getattr(ref_card, 'diagnosis_code', 'UNKNOWN'),
+            "time": getattr(ref_card, 'data_range_end', ''),
             "is_dispute": ep_id in core.obh.disputed_episodes,
             "is_signed": ep_id in core.obh.signed_manifests
         })

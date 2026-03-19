@@ -309,7 +309,8 @@ class ProofCardGenerator:
         )
         
         # 1. Pipeline: Base Validity Check (Hook 1)
-        is_valid, missing_classes, refs = self.governance.check_base_validity(dummy_rec)
+        # 產品化簡化：不再檢查環境變數（Policy），預設系統運行即合法。
+        _, _, refs = self.governance.check_base_validity(dummy_rec)
         
         # 2. Freeze First (Timeline Build)
         timeline = self.timeline_builder.build(metrics, events, snapshots)
@@ -317,21 +318,21 @@ class ProofCardGenerator:
         # 3. Generate Engineering Stats
         eng_card = self._generate_engineering_stats(window_data, profile_ref, window_ref_str, manifest_ref_str, events)
         
-        # Combine Timeline + Eng Stats into 'Frozen Data Payload'
         payload = {
+            "evidence_spec": "DAE_DETACHED_EVIDENCE_V1",
             "timeline": timeline,
             "engineering_proof": eng_card,
             "events_debug": [asdict(e) for e in events] if events else []
         }
         
-        # 4. Construct Single ProofCard
+        # 4. Construct Reference-Only ProofCard
         pc = ProofCard(
             episode_id=dummy_rec.episode_id,
             window_ref=window_ref_str,
             status=eng_card.get("status", "UNKNOWN"),
             diagnosis_code=eng_card.get("diagnosis_code", "UNKNOWN"),
-            validity_grade="DELIVERY_GRADE", # Will be updated by M22 eval
-            missing_evidence_class=missing_classes,
+            validity_grade="RESTRICTED", # 預設為受限，由 M12 在調閱時根據 BYUSE 提升
+            missing_evidence_class=[],
             egress_receipt_ref=None,
             byuse_context_ref=byuse_context_ref,
             data_range_start=min_ts_iso,
@@ -339,12 +340,6 @@ class ProofCardGenerator:
             refs=refs,
             payload=payload
         )
-        
-        # Attach policy validity without disrupting original status
-        if not is_valid:
-            pc.refs["policy_valid"] = False
-        else:
-            pc.refs["policy_valid"] = True
         
         return pc
 

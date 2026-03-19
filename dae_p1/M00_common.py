@@ -97,24 +97,6 @@ class ReasonCode:
     PASSED_ALL_CHECKS = "PASSED_ALL_CHECKS"
 
 
-@dataclass
-class PrivacyPolicyRef:
-    policy_id: str
-    version: str = "1.0"
-    is_active: bool = True
-
-@dataclass
-class PurposeRef:
-    purpose_id: str  # e.g., "network_optimization"
-
-@dataclass
-class RetentionRef:
-    policy_id: str
-    days: int = 30
-
-@dataclass
-class DisclosureScopeRef:
-    scope_id: str    # e.g., "internal_engineering", "isp_support"
 
 @dataclass
 class ProofCard:

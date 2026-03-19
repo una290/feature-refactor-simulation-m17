@@ -1,0 +1,166 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+    <meta charset="utf-8">
+    <title>BREL Spec v2 Logic Review</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        table { border-collapse: collapse; width: 100%; }
+        table, th, td { border: 1px solid black; }
+        th, td { padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+<h1>BREL_Spec_v2.docx 邏輯與選項審查報告</h1>
+<p>基於 <code>BREL_Spec_v2.docx</code> 的內容，核心目標（Core Objectives）非常明確，旨在建立一個 <strong>純參照架構 (Reference-Only Architecture)</strong> 的隱私治理中介層。四大核心原則為：
+1. <strong>PII-Blind</strong>：不碰觸、不儲存原始個資。
+2. <strong>Reference-In, Reference-Out</strong>：以 Token (Opaque String) 傳遞與驗證。
+3. <strong>Policy-as-Config</strong>：業務與合規邏輯參數化，不硬編碼。
+4. <strong>Stateless Core</strong>：核心引擎無狀態，用途 (BYUSE) 由呼叫方宣告。</p>
+<p>為了達成上述目標，文件內定義了多個狀態與選項（Options）。以下方針對這些「選項」的情境 (Demo) 進行檢驗，以決定其存在的必要性。</p>
+<hr />
+<h2>1. ProofCard 核心判定 (<code>verdict</code>)</h2>
+<p><strong>選項清單：</strong> <code>READY</code> | <code>NOT_READY</code> | <code>INSUFFICIENT_EVIDENCE</code>
+<strong>所屬模組：</strong> <code>M13_fp_lite</code> / <code>ProofCard</code></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">選項</th>
+<th style="text-align: left;">輸入 (Input 條件)</th>
+<th style="text-align: left;">輸出 (Output 影響)</th>
+<th style="text-align: left;">Demo 情境 (為甚麼需要存在？)</th>
+<th style="text-align: left;">建議與結論</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong><code>READY</code></strong></td>
+<td style="text-align: left;">遙測樣本數 &gt;= <code>MIN_SAMPLES</code>，且所有指標皆低於 Profile 設定之門檻</td>
+<td style="text-align: left;"><code>status = READY</code>，不產生任何異常 ReasonCode。</td>
+<td style="text-align: left;"><strong>情境：</strong> 一台 Wi-Fi 路由器穩定運行 7 天，其延遲、掉包率皆低於 Profile 設定的健康門檻。<br><strong>必要性：</strong> 需要一個明確的狀態告訴下游「此設備技術上過關」。</td>
+<td style="text-align: left;">✅ <strong>保留</strong> (核心成功狀態)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>NOT_READY</code></strong></td>
+<td style="text-align: left;">遙測樣本數足夠，但存在部分指標（如 Latency, T3/T4）觸發或超過 Profile 告警門檻</td>
+<td style="text-align: left;"><code>status = NOT_READY</code>，記錄失敗的 <code>reasons</code> 與對應的 <code>diagnosis_code</code></td>
+<td style="text-align: left;"><strong>情境：</strong> 一台 Cable 數據機在過去 24 小時內發生嚴重的 T3/T4 Timeout 異常，突破門檻。<br><strong>必要性：</strong> 需要明確標示「技術上未達標」，觸發派工或客訴處理。</td>
+<td style="text-align: left;">✅ <strong>保留</strong> (核心失敗狀態)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>INSUFFICIENT_EVIDENCE</code></strong></td>
+<td style="text-align: left;">收集到的遙測樣本數小於 Profile 規定的 <code>MIN_SAMPLES</code></td>
+<td style="text-align: left;"><code>status = INSUFFICIENT_EVIDENCE</code>，判定無效。</td>
+<td style="text-align: left;"><strong>情境：</strong> 設備剛重開機，或剛安裝完畢，遙測樣本數量小於 <code>MIN_SAMPLES</code>。<br><strong>必要性：</strong> 如果只有 READY 和 NOT_READY，系統無法區分「連線品質很差」與「根本沒收到足夠數據」。這在法律與 SLA 判定上是完全不同的意義。</td>
+<td style="text-align: left;">✅ <strong>保留</strong> (防呆與資料不足狀態)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>2. API 對外輸出審查等級 (<code>evidence_grade</code>)</h2>
+<p><strong>選項清單：</strong> <code>READY</code> | <code>PENDING</code> | <code>INCOMPLETE</code> | <code>UNAUTHORIZED</code>
+<strong>所屬模組：</strong> <code>EgressBundle</code> / API 回應層</p>
+<p>這四個狀態的設計極度精巧，它們各自涵蓋了四種不同維度（維度彼此不重疊）的「成功與阻擋邏輯」。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">選項</th>
+<th style="text-align: left;">阻擋維度</th>
+<th style="text-align: left;">輸入 (Input 條件)</th>
+<th style="text-align: left;">輸出 (Output 影響)</th>
+<th style="text-align: left;">Demo 情境 (為甚麼需要存在？)</th>
+<th style="text-align: left;">建議與結論</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong><code>READY</code></strong></td>
+<td style="text-align: left;">(無) 成功</td>
+<td style="text-align: left;"><code>missing_refs</code> 為空，且 (不需簽名，或已 <code>is_signed=True</code>)，且 <code>authority_scope_ref</code> 合法</td>
+<td style="text-align: left;">生成 <code>egress_receipt_ref</code>，解鎖 <code>pc_priv</code> 高解析度資料。</td>
+<td style="text-align: left;"><strong>情境：</strong> 客服人員 (CSR) 調閱一般客訴，或使用者在 App 內已經點擊「同意授權」。<br><strong>必要性：</strong> 授權與技術均過關，可核發 <code>egress_receipt_ref</code> 並解鎖 <code>pc_priv</code>。</td>
+<td style="text-align: left;">✅ <strong>保留</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>PENDING</code></strong></td>
+<td style="text-align: left;"><strong>人為/流程阻擋</strong></td>
+<td style="text-align: left;">根據 <code>BYUSE_RULES</code> 規定該 Context <code>requires_signed=True</code>，但輸入端判定 <code>is_signed=False</code></td>
+<td style="text-align: left;"><code>egress_receipt_ref = None</code>，<code>pc_priv = None</code>。提示缺簽名。</td>
+<td style="text-align: left;"><strong>情境：</strong> (DISPUTE 爭議情境) 客戶進線爭議帳單，法規要求這類深度調閱必須簽署授權，但客戶尚未在 App 上按同意。<br><strong>必要性：</strong> 提示前端 UI 渲染「請等待客戶簽署」的畫面，而不是直接報錯。</td>
+<td style="text-align: left;">✅ <strong>保留</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>INCOMPLETE</code></strong></td>
+<td style="text-align: left;"><strong>技術/配置阻擋</strong></td>
+<td style="text-align: left;">系統檢查發現缺少底層依賴的必須 Refs（如 policy、disclosure missing）</td>
+<td style="text-align: left;"><code>egress_receipt_ref = None</code>，<code>pc_priv = None</code>，提示系統或技術層問題。</td>
+<td style="text-align: left;"><strong>情境：</strong> 底層設備軔體升級失敗，導致資料包裡缺少了必備的 <code>PrivacyPolicyRef</code> Token。<br><strong>必要性：</strong> 與 PENDING 區分；這不是人的問題，是系統配置壞了，前端 UI 應該顯示「系統異常，請聯絡 IT」，而非叫使用者去簽署。</td>
+<td style="text-align: left;">✅ <strong>保留</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>UNAUTHORIZED</code></strong></td>
+<td style="text-align: left;"><strong>安全/越權阻擋</strong></td>
+<td style="text-align: left;">呼叫請求中未帶 <code>context</code>，或是給定的 <code>context</code> 不存在於允許的 <code>BYUSE_RULES</code> 庫中</td>
+<td style="text-align: left;">拒絕存取，<code>egress_receipt_ref = None</code>，阻擋高風險調閱。</td>
+<td style="text-align: left;"><strong>情境：</strong> A 租戶的後台程式試圖拿無效的 <code>authority_scope_ref</code> 去調閱 B 租戶的證據卡。<br><strong>必要性：</strong> 資安最後防線，直接回絕並觸發資安警報。</td>
+<td style="text-align: left;">✅ <strong>保留</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>💡 綜合結論 (證據等級)：</strong>
+這四個等級的劃分邏輯非常嚴密。沒有任何一個可以被合併，因為它們代表了 <strong>授權通過</strong>、<strong>缺人為授權</strong>、<strong>缺技術參數</strong>、<strong>惡意越權</strong> 四個完全不同的處理流程 (Playbook)。</p>
+</blockquote>
+<hr />
+<h2>3. BYUSE_RULES 設定選項 (用途宣告)</h2>
+<p><strong>選項清單：</strong> <code>SUPPORT_CLOSURE</code> | <code>DISPUTE</code> 等等</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">選項</th>
+<th style="text-align: left;">輸入 (Input 條件)</th>
+<th style="text-align: left;">輸出 (Output 影響)</th>
+<th style="text-align: left;">Demo 情境</th>
+<th style="text-align: left;">建議與結論</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong><code>SUPPORT_CLOSURE</code></strong></td>
+<td style="text-align: left;">呼叫端傳入 <code>byuse_context_ref = "SUPPORT_CLOSURE"</code>，且不強制要求 <code>is_signed</code></td>
+<td style="text-align: left;">只要技術指標齊全，最終 grade 直接等於 <code>READY</code>，允許存取 <code>pc_priv</code></td>
+<td style="text-align: left;">此為一般結案支援，不涉及深度個資，因此 <code>on_complete_grade</code> 直接給予 <code>READY</code>。</td>
+<td style="text-align: left;">✅ <strong>保留</strong> (對應一般客服查修)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>DISPUTE</code></strong></td>
+<td style="text-align: left;">呼叫端傳入 <code>byuse_context_ref = "DISPUTE"</code>，強制要求 <code>requires_signed=True</code> 及 <code>is_signed=True</code> 條件</td>
+<td style="text-align: left;">若缺簽名則輸出 <code>PENDING</code>，齊全則為 <code>READY</code>。</td>
+<td style="text-align: left;">帳單爭議，牽涉可能賠償或合約，需嚴格記錄。設定 <code>requires_signed: True</code>，未簽署前給予 <code>PENDING</code>。</td>
+<td style="text-align: left;">✅ <strong>保留</strong> (對應進階爭議處置)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>4. 系統廢棄選項檢討 (Deprecated 區塊)</h2>
+<p>在文件中第 7 節明確指出了幾個過時的架構選擇，結合核心設計原則，這些廢除是非常正確且<strong>已經在系統中全面落實</strong>：</p>
+<ol>
+<li><strong>廢棄 <code>PrivacyPolicyRef</code> 物件，改用純字串 Token</strong></li>
+<li><strong>理由：</strong> 貫徹 <em>Reference-In, Reference-Out</em>。BREL 引擎不應該嘗試反序列化解析 Policy 內容，只要確認 Token 存在即可。</li>
+<li><strong>落實狀況：</strong> <strong>遵守第 7 節的廢棄指示</strong>，已徹底從程式碼中（如 <code>M00_common.py</code>）清除之前留下的硬編碼邏輯和物件實例化（如 <code>PrivacyPolicyRef</code> dataclass），嚴格改用純文字 Token 與 Dictionary config 取代。</li>
+<li><strong>廢棄 ProofCard 內嵌 <code>pc_min</code>/<code>pc_priv</code>，落實 API 層視圖與儲存解耦</strong></li>
+<li><strong>理由：</strong> 貫徹 <em>Stateless Core</em> 與 <em>Policy-as-Config</em>。視圖應該是在 API 層被呼叫時，根據當下的 <code>byuse</code> 動態組裝，而不是在產生的那一刻被寫死存起來（一旦存起來，後續若權限變更容易衍生落差）。</li>
+<li><strong>落實狀況：</strong> <strong>API 層視圖與儲存完全解耦</strong>，已確保 <code>pc_priv</code> 和 <code>pc_min</code> 完全從 DB 的儲存欄位（如 <code>ProofCard</code> 模型）中剃除，僅作為 <code>EgressBundle</code> 的 API Response DTO 在回傳時動態產生。並且落實了雙層儲存分離（Ledger 存參照，Vault 存加密資料）。</li>
+<li><strong>廢棄硬編碼 <code>if "dispute" in context_ref</code></strong></li>
+<li><strong>理由：</strong> 貫徹 <em>Policy-as-Config</em>。避免將業務邏輯寫死在核心中。</li>
+<li><strong>落實狀況：</strong> 已經<strong>徹底移除程式碼中的 if-else 硬編碼</strong>，全面改由 M22 模組的 <code>BYUSE_RULES</code> 設定字典進行動態判斷。</li>
+</ol>
+<hr />
+<h2>🎯 總結與最終決策建議</h2>
+<p>基於對 BREL v2.0 系統核心目標的了解，<strong>目前文件中定義的所有現存選項 (<code>verdict</code>, <code>evidence_grade</code>) 皆非常合理，且擁有明確對應的現實世界除錯/處理情境，沒有發生邏輯重疊（Redundancy）的狀況。</strong></p>
+<p><strong>因此我的建議為：</strong>
+1. <strong>無需刪除或合併</strong>現有定義的 Enum 狀態。
+2. <strong>遵守第 7 節的廢棄指示</strong>：徹底從程式碼中清除之前留下的硬編碼邏輯和物件實例化（如 <code>PrivacyPolicyRef</code> dataclass），嚴格改用純文字 Token 與 Dictionary config 取代。
+3. <strong>API 層視圖與儲存解耦</strong>：確保 <code>pc_priv</code> 和 <code>pc_min</code> 完全從 DB 的儲存欄位中剃除，僅作為 <code>EgressBundle</code> 的 API Response DTO。</p>
+</body>
+</html>
