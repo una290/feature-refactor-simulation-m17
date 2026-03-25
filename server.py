@@ -544,13 +544,23 @@ def simulate_incident(type: str = "latency", duration: int = 30, domain: str = N
         
     return {"status": "Simulating", "type": type, "duration": duration, "mode": "M17_Integrated"}
 
+from pydantic import BaseModel
+from typing import Optional, Dict
+
+class OBHTriggerRequest(BaseModel):
+    context: Optional[str] = None
+    device_refs: Optional[Dict[str, str]] = None
+
 @app.post("/obh/trigger")
-def trigger_obh(context: str = None):
+def trigger_obh(req: OBHTriggerRequest = None):
     """
     Trigger One-Button Help export manually.
     """
     if not core:
         return {"error": "Core not initialized"}
+    
+    context = req.context if req else None
+    device_refs = req.device_refs if req else None
     
     try:
         # Export to current directory or a 'bundles' subdir
@@ -561,7 +571,7 @@ def trigger_obh(context: str = None):
         
         # Pass authority_scope_ref=None to simulate a user
         # This ensures the ProofCard V1.3 is generated safely with PC-Min only.
-        res = core.obh_export("bundles", authority_scope_ref=None, byuse_context_ref=context)
+        res = core.obh_export("bundles", authority_scope_ref=None, byuse_context_ref=context, provided_refs=device_refs)
         return {
             "status": "Exported",
             "episode_id": res.episode_id,

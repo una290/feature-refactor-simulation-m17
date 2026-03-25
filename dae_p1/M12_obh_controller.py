@@ -76,7 +76,8 @@ class OBHController:
     def run(self, out_dir: str, recognition: EpisodeRecognition,
             metrics: List[Any], events: List[Any], snapshots: List[Any],
             byuse_context_ref: Optional[str] = None,
-            authority_scope_ref: Optional[str] = None) -> OBHResult:
+            authority_scope_ref: Optional[str] = None,
+            provided_refs: Optional[Dict[str, str]] = None) -> OBHResult:
         
         from dataclasses import asdict
         
@@ -89,7 +90,8 @@ class OBHController:
             window_ref_str=recognition.worst_window_ref or "W-LATEST",
             authority_scope_ref=authority_scope_ref,
             byuse_context_ref=byuse_context_ref,
-            episode_id=recognition.episode_id
+            episode_id=recognition.episode_id,
+            provided_refs=provided_refs
         )
         if full_card.payload:
             full_card.payload["observability"] = recognition.observability
@@ -120,8 +122,8 @@ class OBHController:
         evidence_grade, upgrade_req = self.governance.evaluate_closure_grade(projected_card_dict, byuse_context_ref, is_signed=is_signed)
 
         # [產品化簡化] 判定是否需要剝離 Payload
-        # 只要 grade 不是 "READY"，就不允許輸出 pc_priv
-        should_strip = (evidence_grade != "READY")
+        # 只要 grade 不是 "GRANTED"，就不允許輸出 pc_priv
+        should_strip = (evidence_grade != "GRANTED")
 
         # We use the evidence_payload cached before Ledger detach
         payload = evidence_payload
@@ -217,7 +219,7 @@ class OBHController:
         evidence_grade, upgrade_req = self.governance.evaluate_closure_grade(projected_card_dict, byuse_context_ref, is_signed=is_signed)
 
         # [產品化簡化] 判定是否需要剝離 Payload
-        should_strip = (evidence_grade != "READY")
+        should_strip = (evidence_grade != "GRANTED")
         if fields == "pc_min":
             should_strip = True
             

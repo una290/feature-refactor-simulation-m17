@@ -76,13 +76,13 @@ export default function CsrDashboard({ onBack }) {
         }
 
         try {
-            const apiContext = context === 'default' ? null : context;
+            const apiContext = context === 'default' ? 'SUPPORT_CLOSURE' : context;
             const data = await csrFetchOBHBundle(connectedIp, searchQuery.trim(), apiContext);
             if (!data || data.error) throw new Error(data?.error || "Failed to contact server.");
             setResult(data);
 
             // If we were polling and the grade is now DELIVERY_GRADE, stop polling
-            if (isPolling && data.bundle?.pc_min?.evidence_grade !== 'NOT_CLOSURE_GRADE') {
+            if (isPolling && data.bundle?.pc_min?.evidence_grade === 'GRANTED') {
                 setPendingAuth(false);
                 setActiveTab('pc-priv'); // Auto-switch to priv tab when unlocked
             }
@@ -137,12 +137,12 @@ export default function CsrDashboard({ onBack }) {
         const s = String(status).toUpperCase();
         let color = '#757575', icon = '?';
 
-        if (['FAIL', 'NOT_READY', 'DENY', 'STOP', 'PUBLIC', 'NOT_CLOSURE_GRADE', 'INSUFFICIENT_EVIDENCE'].includes(s)) {
+        if (['FAIL', 'NOT_READY', 'DENIED', 'STOP', 'PUBLIC', 'NOT_CLOSURE_GRADE', 'INSUFFICIENT_EVIDENCE'].includes(s)) {
             color = '#c62828'; icon = '✗';
         } else if (themeColor) {
             color = themeColor;
             icon = title === 'Data Range' ? '📅' : '✓';
-        } else if (['PASS', 'ALL SYSTEMS GO', 'ADMIT', 'READY', 'PRIVATE', 'DELIVERY_GRADE', 'VALID', 'OK'].includes(s)) {
+        } else if (['PASS', 'ALL SYSTEMS GO', 'ADMIT', 'GRANTED', 'PRIVATE', 'DELIVERY_GRADE', 'VALID', 'OK', 'READY'].includes(s)) {
             color = '#2e7d32'; icon = '✓';
         } else {
             color = '#0288d1'; icon = 'ℹ';
@@ -185,23 +185,29 @@ export default function CsrDashboard({ onBack }) {
             return (
                 <View style={styles.tabContent}>
                     {/* [NEW] COMPLIANCE WIZARD BLOCKER CARD */}
-                    {grade === 'NOT_CLOSURE_GRADE' && (
+                    {grade === 'DENIED' && (
                         <View style={styles.blockerCard}>
-                            <Text style={styles.blockerTitle}>🛑 Cannot Close Ticket (NOT_CLOSURE_GRADE)</Text>
-                            <Text style={styles.blockerText}>This diagnostic data is being used for "{reportContext}".</Text>
+                            <Text style={styles.blockerTitle}>🛑 Security Check Failed (Access DENIED)</Text>
+                            <Text style={styles.blockerText}>This diagnostic data is blocked by Privacy Safeguards.</Text>
                             <Text style={styles.blockerText}>The current evidence lacks required permissions for this use case.</Text>
                             <View style={styles.blockerActionBox}>
-                                <Text style={styles.blockerActionLabel}>Required to Proceed:</Text>
+                                <Text style={styles.blockerActionLabel}>Remediation Action Required:</Text>
                                 <Text style={styles.blockerActionReq}>📝 {pcMin.upgrade_requirements_ref}</Text>
-                                <TouchableOpacity
-                                    style={[styles.blockerBtn, pendingAuth && { backgroundColor: '#ffb300', borderColor: '#ff6f00', borderWidth: 1 }]}
-                                    onPress={handleAuthRequest}
-                                    disabled={pendingAuth}
-                                >
-                                    <Text style={[styles.blockerBtnText, pendingAuth && { color: '#3e2723' }]}>
-                                        {pendingAuth ? "⏳ Waiting for customer approval to unlock payload..." : "👉 Send Authorization Request to User"}
+                                {pcMin.upgrade_requirements_ref === 'UPREQ-SIGNED-MANIFEST' ? (
+                                    <TouchableOpacity
+                                        style={[styles.blockerBtn, pendingAuth && { backgroundColor: '#ffb300', borderColor: '#ff6f00', borderWidth: 1 }]}
+                                        onPress={handleAuthRequest}
+                                        disabled={pendingAuth}
+                                    >
+                                        <Text style={[styles.blockerBtnText, pendingAuth && { color: '#3e2723' }]}>
+                                            {pendingAuth ? "⏳ Waiting for customer approval..." : "👉 Send Authorization Request to User"}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ) : (
+                                    <Text style={{color: '#b71c1c', marginTop: 10, fontStyle: 'italic', fontWeight: 'bold'}}>
+                                        ❌ CSR Override Not Available. Please ask customer to update device or correct the reporting context.
                                     </Text>
-                                </TouchableOpacity>
+                                )}
                             </View>
                         </View>
                     )}

@@ -274,7 +274,8 @@ class ProofCardGenerator:
                  manifest_ref_str: str = "TBD",
                  authority_scope_ref: Optional[str] = None,
                  byuse_context_ref: Optional[str] = None,
-                 episode_id: Optional[str] = None) -> ProofCard:
+                 episode_id: Optional[str] = None,
+                 provided_refs: Optional[Dict[str, str]] = None) -> ProofCard:
         
         from .M00_common import ObservabilityResult, EpisodeRecognition
         
@@ -309,8 +310,8 @@ class ProofCardGenerator:
         )
         
         # 1. Pipeline: Base Validity Check (Hook 1)
-        # 產品化簡化：不再檢查環境變數（Policy），預設系統運行即合法。
-        _, _, refs = self.governance.check_base_validity(dummy_rec)
+        # 落實 Reference-In 原則，將外部傳入的 provided_refs 交由 M22 處理並回傳。
+        _, _, refs = self.governance.check_base_validity(dummy_rec, provided_refs)
         
         # 2. Freeze First (Timeline Build)
         timeline = self.timeline_builder.build(metrics, events, snapshots)

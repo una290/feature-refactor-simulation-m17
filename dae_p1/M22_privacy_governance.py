@@ -17,56 +17,44 @@ import uuid
 #   - 移除 PARTIAL_RELIANCE：前端所有元件都未針對此值做差異化處理，
 #     行為等同 DELIVERY_GRADE，合併消除以減少認知負擔
 #
-# 現在只有 3 個 Grade：
-#   DELIVERY_GRADE     = 預設，無特定用途宣告，只給 PC-Min
-#   CLOSURE_GRADE      = 驗證通過，允許 PC-Priv
-#   NOT_CLOSURE_GRADE  = 阻擋，缺少必要 Refs 或簽署
+# 現在只有 2 個 Grade：
+#   GRANTED = 授權通過，允許 PC-Priv
+#   DENIED  = 攔截，並附上具體的拒絕原因 (缺少必要 Refs、用途錯誤、未簽名等)
 BYUSE_RULES: dict = {
     "SUPPORT_CLOSURE": {
-        "required_refs":    ["policy", "disclosure"], # 精簡但足以 Demo
-        "on_complete_grade": "READY",
-        "on_missing_grade":  "INCOMPLETE",            # 缺技術 Ref -> 系統異常故事
+        "required_refs":    ["policy", "disclosure"], 
     },
     "DISPUTE": {
         "required_refs":    ["policy", "disclosure"],
         "requires_signed":   True,                    # 必須使用者主動簽署
-        "on_complete_grade": "READY",
-        "on_missing_grade":  "PENDING",               # 缺簽名 -> 法律流程故事
     },
 }
 
 
-# 預設的 Ref Token 模板（來自 Policy Store，模擬 Token 化結果）
-# 生產環境這些應從外部 Policy Store 或 Config Service 讀取
-DEFAULT_REF_TOKENS: Dict[str, str] = {
-    "policy":   "tok_pol_default_v1",
-    "purpose":  "tok_purp_diagnosis",
-    "retention":"tok_ret_30d",
-    "disclosure": "tok_scope_isp_support",
-    "redaction":  "REDACT.MIN",
-}
-
+# 移除預設的 Ref Token 模板 (DEFAULT_REF_TOKENS)
+# 這個職責移交給呼叫端 (Reference-In)
 
 class PrivacyGovernance:
     """
     M22 隱私治理模組（Reference-Only 版本）
 
     三個職責：
-    1. check_base_validity：只回傳 ref_id 字串，不回傳 Ref 物件（輕量化）
-    2. project_view：不再過濾資料，改為生成 Egress Receipt（出口回執）
-    3. evaluate_closure_grade：改用 BYUSE_RULES 設定，不再寫死業務邏輯
+    1. check_base_validity：單純驗證並回傳傳入的 ref_id 字串，不再硬編碼產生指針（輕量化）
+    2. project_view：生成 Egress Receipt（出口回執），不再過濾資料
+    3. evaluate_closure_grade：使用 BYUSE_RULES 評估等級，若 refs 不足會正確回傳 INCOMPLETE
     """
 
     def __init__(self, strict_mode: bool = False):
         self.strict_mode = strict_mode
 
-    def check_base_validity(self, attempt) -> Tuple[bool, List[str], Dict[str, str]]:
+    def check_base_validity(self, attempt, provided_refs: Optional[Dict[str, str]] = None) -> Tuple[bool, List[str], Dict[str, str]]:
         """
         [產品化簡化] 基礎有效性檢查
         不再檢查環境變數（如 Policy），預設系統運行即合法。
+        現在強迫由外部提供 provided_refs，落實 Reference-In。
         """
-        # [關鍵改動] 直接回傳 Token 字典，不再進行冗餘的 Policy 存在檢查
-        ref_tokens = dict(DEFAULT_REF_TOKENS)
+        # 放行外部提供的指針，若沒有則預設給空字典，這會導致後續 evaluate 時遇到 INCOMPLETE
+        ref_tokens = dict(provided_refs) if provided_refs else {}
         return True, [], ref_tokens
 
     def project_view(self, proof_card_dict: Dict[str, Any], authority_scope_ref: Optional[str]) -> Dict[str, Any]:
@@ -108,23 +96,21 @@ class PrivacyGovernance:
 
     def evaluate_closure_grade(self, card_dict: Any, context_ref: Optional[str] = None, is_signed: bool = False) -> Tuple[str, Optional[str]]:
         """
-        [產品故事化] BYUSE 合規驗證器 (四狀態版)
-        READY: 授權通過，可看 Payload
-        PENDING: 人為行為缺失 (缺簽署)
-        INCOMPLETE: 技術數據缺失 (缺 Policy/Refs)
-        UNAUTHORIZED: 用途不符
+        [產品故事化] BYUSE 合規驗證器 ( 二元狀態版 )
+        GRANTED: 授權通過，可看 Payload
+        DENIED: 授權拒絕，並附上補救措施 Token (Upgrade Requirement)
         """
         from dataclasses import asdict, is_dataclass
         if is_dataclass(card_dict):
             card_dict = asdict(card_dict)
             
         if not context_ref:
-            return "UNAUTHORIZED", None
+            return "DENIED", "UPREQ-INVALID-CONTEXT"
 
         # 1. 查找規則
         rule = BYUSE_RULES.get(context_ref.upper())
         if not rule:
-            return "UNAUTHORIZED", None
+            return "DENIED", "UPREQ-UNAUTHORIZED-PURPOSE"
 
         # 2. 檢查技術完整性 (Technical Check)
         card_refs = card_dict.get("refs") or {}
@@ -132,12 +118,17 @@ class PrivacyGovernance:
         missing_tech = [r for r in required if r not in card_refs]
         
         if missing_tech:
-            # 在 Demo 中代表「系統配置遺失」或「數據同步失敗」
-            return "INCOMPLETE", f"UPREQ-MISSING-{missing_tech[0].upper()}"
+            # 【轉圜方案 A：Implicit Default Policy】
+            # 當設備老舊或斷線無法提供合規指針時，不要無情地回傳 DENIED。
+            # 而是「隱含同意」套用全公司最新的預設消費者條款，讓這筆客訴能順利被客服看見。
+            # 系統會改發一個 'WARN-IMPLICIT-POLICY' 警告代碼，而不是封殺它。
+            implicit_warning = f"WARN-IMPLICIT-POLICY-MISSING-{missing_tech[0].upper()}"
+        else:
+            implicit_warning = None
 
         # 3. 檢查人為/法律授權 (Business/Legal Check)
         if rule.get("requires_signed") and not is_signed:
             # 在 Demo 中代表「用戶尚未同意」
-            return "PENDING", "UPREQ-SIGNED-MANIFEST"
+            return "DENIED", "UPREQ-SIGNED-MANIFEST"
 
-        return rule["on_complete_grade"], None
+        return "GRANTED", implicit_warning

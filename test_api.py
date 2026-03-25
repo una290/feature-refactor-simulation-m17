@@ -46,7 +46,7 @@ def test_api(adapter_type):
     print(f"2. /device/local/proof API Profile Used: {profile_ref}")
     
     # Test /obh/trigger
-    res3 = client.post("/obh/trigger")
+    res3 = client.post("/obh/trigger", json={})
     if res3.status_code == 200:
         ep_id = res3.json().get("episode_id")
         print(f"3. /obh/trigger API Episode ID generated: {ep_id}")

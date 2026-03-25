@@ -124,14 +124,18 @@ export const simulateIncident = async (type, duration, domain = null) => {
     }
 };
 
-export const triggerOBH = async (context = null) => {
+export const triggerOBH = async (context = null, deviceRefs = null) => {
     try {
         let url = `${API_BASE_URL}/obh/trigger`;
-        if (context) {
-            url += `?context=${encodeURIComponent(context)}`;
-        }
         const response = await fetch(url, {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                context: context,
+                device_refs: deviceRefs
+            })
         });
         return await response.json();
     } catch (error) {

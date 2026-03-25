@@ -90,7 +90,7 @@ class OBHCoreService:
             worst_window_ref=worst_window_ref
         )
 
-    def obh_export(self, out_dir: str, authority_scope_ref: Optional[str] = None, byuse_context_ref: Optional[str] = None) -> OBHResult:
+    def obh_export(self, out_dir: str, authority_scope_ref: Optional[str] = None, byuse_context_ref: Optional[str] = None, provided_refs: Optional[Dict[str, str]] = None) -> OBHResult:
         """
         Perform OBH export using current buffers.
         """
@@ -102,5 +102,6 @@ class OBHCoreService:
             events=self.events_buf.snapshot(100),
             snapshots=self.snaps_buf.snapshot(10),
             authority_scope_ref=authority_scope_ref,
-            byuse_context_ref=byuse_context_ref
+            byuse_context_ref=byuse_context_ref,
+            provided_refs=provided_refs
         )
