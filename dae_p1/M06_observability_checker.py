@@ -35,10 +35,20 @@ class ObservabilityChecker:
             origin_hint=ev.origin_hint or "unknown"
         )
 
-    def check_no_change_event(self) -> ObservabilityResult:
-        return ObservabilityResult(
-            observability_status="INSUFFICIENT",
-            opaque_risk=True,
-            missing_refs=["no_change_event_detected"],
-            origin_hint="unknown"
-        )
+    def check_no_change_event(self, is_network_bad: bool = True) -> ObservabilityResult:
+        if not is_network_bad:
+            # Network is stable. Lack of change events is perfectly normal and expected (A healthy baseline).
+            return ObservabilityResult(
+                observability_status="SUFFICIENT",
+                opaque_risk=False,
+                missing_refs=[],
+                origin_hint="stable_baseline"
+            )
+        else:
+            # Network is bad, but we have no logs to show WHY it broke. This is a blind spot.
+            return ObservabilityResult(
+                observability_status="INSUFFICIENT",
+                opaque_risk=True,
+                missing_refs=["no_change_event_detected"],
+                origin_hint="unknown"
+            )

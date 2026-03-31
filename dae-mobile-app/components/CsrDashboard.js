@@ -497,17 +497,8 @@ export default function CsrDashboard({ onBack }) {
                                 onPress={() => { setReportContext('default'); handleSearch('default'); }}
                                 disabled={loading || !searchQuery}
                             >
-                                <Text style={styles.idleContextBtnTitle}>Perform Routine Check</Text>
-                                <Text style={styles.idleContextBtnDesc}>Standard diagnostics with default privacy</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                style={[styles.idleContextBtn, { marginTop: 15 }, !searchQuery && { opacity: 0.5 }]}
-                                onPress={() => { setReportContext('dispute'); handleSearch('dispute'); }}
-                                disabled={loading || !searchQuery}
-                            >
-                                <Text style={styles.idleContextBtnTitle}>Escalate to Dispute/Closure</Text>
-                                <Text style={styles.idleContextBtnDesc}>Strict mode requiring signed manifest for legal cases</Text>
+                                <Text style={styles.idleContextBtnTitle}>Retrieve Diagnostic Session</Text>
+                                <Text style={styles.idleContextBtnDesc}>View connection health & privacy-screened telemetry</Text>
                             </TouchableOpacity>
                         </View>
                     </View>

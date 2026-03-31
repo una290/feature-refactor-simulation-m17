@@ -27,8 +27,9 @@ class RecognitionEngine:
             obs_res = self.obs.check_event(recent_change_events[-1])
             opaque = obs_res.opaque_risk
         else:
-            obs_res = self.obs.check_no_change_event()
-            opaque = True
+            # Context-Aware Audit: If network is healthy, missing change events is a perfectly stable baseline.
+            obs_res = self.obs.check_no_change_event(is_network_bad=is_bad)
+            opaque = obs_res.opaque_risk
 
         verdict, conf = self.classifier.classify(flags, opaque_risk=opaque)
         evidence_ref = f"{latest_metric.window_ref}:{','.join(flags) if flags else 'no_flags'}"
